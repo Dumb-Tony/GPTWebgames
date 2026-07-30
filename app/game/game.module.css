@@ -1,0 +1,681 @@
+.shell {
+  position: relative;
+  width: 100vw;
+  height: 100svh;
+  min-height: 620px;
+  overflow: hidden;
+  background: #060914;
+  color: var(--ink);
+}
+
+.shell::after {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  content: "";
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.5);
+}
+
+.canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.topbar {
+  position: absolute;
+  z-index: 4;
+  top: 0;
+  left: 0;
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 24px 28px;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(4, 7, 15, 0.92), transparent);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandMark {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 2px solid var(--yellow);
+  border-radius: 50%;
+  color: var(--yellow);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: -0.05em;
+}
+
+.brand p,
+.brand span {
+  margin: 0;
+}
+
+.brand p {
+  font-size: 18px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+}
+
+.brand div > span {
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+}
+
+.clock {
+  display: flex;
+  min-width: 188px;
+  flex-direction: column;
+  align-items: flex-end;
+  padding: 9px 13px;
+  border-right: 4px solid var(--cyan);
+  background: rgba(7, 12, 23, 0.76);
+}
+
+.clock span {
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
+.clock strong {
+  font-family: monospace;
+  font-size: 32px;
+  line-height: 1;
+}
+
+.urgent {
+  border-color: var(--red);
+  color: #fff;
+  animation: warningPulse 0.8s steps(2, end) infinite;
+}
+
+.missionPanel,
+.toolPanel {
+  position: absolute;
+  z-index: 4;
+  top: 96px;
+  width: min(310px, calc(50vw - 34px));
+  border: 1px solid var(--line);
+  background: linear-gradient(145deg, rgba(16, 22, 39, 0.94), rgba(7, 10, 20, 0.82));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(10px);
+}
+
+.missionPanel {
+  left: 28px;
+  padding: 18px;
+  border-left: 3px solid var(--yellow);
+}
+
+.toolPanel {
+  right: 28px;
+  padding: 16px;
+  border-right: 3px solid var(--orange);
+}
+
+.eyebrow,
+.missionPanel p,
+.progressHeader,
+.miniStats,
+.heatLabel,
+.scanStatus {
+  font-family: monospace;
+}
+
+.eyebrow {
+  color: var(--yellow);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+
+.missionPanel h2 {
+  margin: 7px 0 6px;
+  font-size: 20px;
+  letter-spacing: -0.02em;
+}
+
+.missionPanel > p {
+  margin: 0 0 17px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.progressHeader,
+.heatLabel,
+.scanStatus {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+}
+
+.progressHeader strong {
+  color: var(--yellow);
+}
+
+.progressTrack,
+.heatTrack {
+  height: 8px;
+  margin: 7px 0 10px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.progressTrack div {
+  height: 100%;
+  background: linear-gradient(90deg, #a98c29, var(--yellow));
+  box-shadow: 0 0 18px rgba(255, 216, 90, 0.45);
+  transition: width 0.3s ease;
+}
+
+.miniStats {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+}
+
+.toolHeading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.toolHeading div {
+  display: flex;
+  flex-direction: column;
+}
+
+.toolHeading strong {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+.toolHeading small {
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.toolIcon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  transform: rotate(-4deg);
+  border: 2px solid var(--orange);
+  color: var(--orange);
+  font-weight: 900;
+}
+
+.heatTrack div {
+  height: 100%;
+  background: linear-gradient(90deg, var(--yellow), var(--orange));
+  transition: width 0.08s linear;
+}
+
+.heatTrack .heatDanger {
+  background: var(--red);
+  box-shadow: 0 0 24px rgba(255, 97, 111, 0.8);
+}
+
+.scanStatus {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.scanStatus strong {
+  color: var(--cyan);
+}
+
+.controls {
+  position: absolute;
+  z-index: 4;
+  bottom: 26px;
+  left: 28px;
+  display: flex;
+  gap: 7px;
+}
+
+.controls div {
+  display: flex;
+  min-width: 76px;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 9px;
+  border-top: 1px solid var(--line);
+  background: rgba(7, 10, 20, 0.72);
+}
+
+.controls kbd {
+  width: fit-content;
+  color: var(--cyan);
+  font-family: monospace;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.controls span {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.08em;
+}
+
+.radio {
+  position: absolute;
+  z-index: 4;
+  right: 28px;
+  bottom: 26px;
+  width: min(460px, 42vw);
+  padding: 12px 16px;
+  border-left: 3px solid var(--cyan);
+  background: rgba(7, 10, 20, 0.82);
+  backdrop-filter: blur(8px);
+}
+
+.radio span {
+  color: var(--cyan);
+  font-family: monospace;
+  font-size: 8px;
+  letter-spacing: 0.18em;
+}
+
+.radio p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.launchButton {
+  position: absolute;
+  z-index: 5;
+  right: 28px;
+  bottom: 104px;
+  padding: 13px 16px;
+  border: 1px solid var(--yellow);
+  background: var(--yellow);
+  color: #17140b;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  box-shadow: 0 0 30px rgba(255, 216, 90, 0.2);
+}
+
+.overlay {
+  position: absolute;
+  z-index: 10;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 70% 20%, rgba(86, 202, 211, 0.12), transparent 30%),
+    rgba(4, 7, 15, 0.84);
+  backdrop-filter: blur(9px);
+}
+
+.briefingCard,
+.resultsCard {
+  position: relative;
+  width: min(920px, 94vw);
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-top: 5px solid var(--yellow);
+  background: linear-gradient(145deg, rgba(21, 28, 48, 0.98), rgba(8, 11, 22, 0.98));
+  padding: clamp(28px, 5vw, 62px);
+  box-shadow: 0 35px 90px rgba(0, 0, 0, 0.5);
+}
+
+.briefingCard::before,
+.resultsCard::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 28%;
+  height: 100%;
+  content: "";
+  opacity: 0.12;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 13px,
+    var(--yellow) 13px,
+    var(--yellow) 25px
+  );
+  clip-path: polygon(58% 0, 100% 0, 100% 100%, 0 100%);
+}
+
+.companyLine {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+}
+
+.companyLine span {
+  padding: 5px 7px;
+  background: var(--yellow);
+  color: #17140b;
+  font-family: sans-serif;
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.kicker {
+  margin: 34px 0 10px;
+  color: var(--cyan);
+  font-family: monospace;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+.briefingCard h1,
+.resultsCard h1 {
+  position: relative;
+  z-index: 1;
+  max-width: 720px;
+  margin: 0;
+  font-size: clamp(48px, 8vw, 96px);
+  font-weight: 950;
+  letter-spacing: -0.075em;
+  line-height: 0.83;
+}
+
+.briefingCard h1 em {
+  color: var(--yellow);
+  font-style: normal;
+}
+
+.lede {
+  position: relative;
+  z-index: 1;
+  max-width: 660px;
+  margin: 25px 0;
+  color: #c6c9d0;
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.briefGrid,
+.resultGrid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  max-width: 720px;
+  margin: 24px 0;
+  background: var(--line);
+}
+
+.briefGrid > div,
+.resultGrid > div {
+  display: flex;
+  min-height: 118px;
+  flex-direction: column;
+  padding: 15px;
+  background: #111727;
+}
+
+.briefGrid span {
+  margin-bottom: 8px;
+  color: var(--yellow);
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.briefGrid strong {
+  font-size: 14px;
+  letter-spacing: 0.08em;
+}
+
+.briefGrid p {
+  margin: 7px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.briefingCard button,
+.resultsCard button {
+  position: relative;
+  z-index: 1;
+  margin-top: 6px;
+  padding: 16px 22px;
+  border: 0;
+  background: var(--yellow);
+  color: #17140b;
+  font-size: 13px;
+  font-weight: 950;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.briefingCard button:hover,
+.resultsCard button:hover,
+.launchButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 30px rgba(255, 216, 90, 0.24);
+}
+
+.briefingCard > small {
+  position: relative;
+  z-index: 1;
+  display: block;
+  margin-top: 12px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+}
+
+.resultsCard {
+  width: min(760px, 94vw);
+  border-top-color: var(--green);
+}
+
+.resultsCard.failure {
+  border-top-color: var(--red);
+}
+
+.resultsCard::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 13px,
+    var(--green) 13px,
+    var(--green) 25px
+  );
+}
+
+.failure::before {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 13px,
+    var(--red) 13px,
+    var(--red) 25px
+  );
+}
+
+.resultSeal {
+  position: absolute;
+  top: 54px;
+  right: 52px;
+  z-index: 2;
+  transform: rotate(7deg);
+  border: 3px solid var(--green);
+  padding: 9px 12px;
+  color: var(--green);
+  font-family: monospace;
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+}
+
+.failure .resultSeal {
+  border-color: var(--red);
+  color: var(--red);
+}
+
+.resultsCard h1 {
+  max-width: 580px;
+  font-size: clamp(48px, 7vw, 78px);
+}
+
+.resultGrid {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.resultGrid > div {
+  min-height: 94px;
+}
+
+.resultGrid span {
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 8px;
+  letter-spacing: 0.1em;
+}
+
+.resultGrid strong {
+  margin-top: 8px;
+  font-family: monospace;
+  font-size: 23px;
+}
+
+@keyframes warningPulse {
+  50% {
+    background: rgba(112, 19, 32, 0.72);
+  }
+}
+
+@media (max-width: 760px) {
+  .shell {
+    min-height: 560px;
+  }
+
+  .topbar {
+    padding: 14px;
+  }
+
+  .brand div {
+    display: none;
+  }
+
+  .clock {
+    min-width: 148px;
+  }
+
+  .clock strong {
+    font-size: 26px;
+  }
+
+  .missionPanel,
+  .toolPanel {
+    top: 76px;
+    width: calc(50vw - 18px);
+  }
+
+  .missionPanel {
+    left: 12px;
+  }
+
+  .toolPanel {
+    right: 12px;
+  }
+
+  .missionPanel h2 {
+    font-size: 14px;
+  }
+
+  .missionPanel > p,
+  .toolHeading small,
+  .miniStats {
+    display: none;
+  }
+
+  .controls {
+    left: 12px;
+    bottom: 12px;
+    max-width: 58vw;
+    flex-wrap: wrap;
+  }
+
+  .controls div {
+    min-width: 64px;
+    padding: 6px;
+  }
+
+  .radio {
+    right: 12px;
+    bottom: 12px;
+    width: 36vw;
+  }
+
+  .briefingCard,
+  .resultsCard {
+    max-height: 94svh;
+    overflow-y: auto;
+    padding: 26px;
+  }
+
+  .briefingCard h1 {
+    font-size: 48px;
+  }
+
+  .briefGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .briefGrid > div {
+    min-height: auto;
+  }
+
+  .resultGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .resultSeal {
+    position: static;
+    display: inline-block;
+    margin-bottom: 20px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .urgent {
+    animation: none;
+  }
+
+  .briefingCard button,
+  .resultsCard button,
+  .launchButton {
+    transition: none;
+  }
+}
