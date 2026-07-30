@@ -90,6 +90,19 @@ const craters = [
   { x: 2220, y: 1190, r: 105 },
 ];
 
+const terrainDetails = (() => {
+  let seed = 4017;
+  return Array.from({ length: 120 }, (_, index) => {
+    seed = (seed * 48271) % 2147483647;
+    const x = 90 + (seed / 2147483647) * (WORLD.width - 180);
+    seed = (seed * 48271) % 2147483647;
+    const y = 90 + (seed / 2147483647) * (WORLD.height - 180);
+    seed = (seed * 48271) % 2147483647;
+    const size = 2 + (seed / 2147483647) * 10;
+    return { id: index, x, y, size, rotation: seed * 0.001 };
+  });
+})();
+
 function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
@@ -459,6 +472,19 @@ export function MoonGoonsGame() {
       gradient.addColorStop(1, "#151528");
       context.fillStyle = gradient;
       context.fillRect(0, 0, width, height);
+      const nebula = context.createRadialGradient(
+        width * 0.78,
+        height * 0.12,
+        0,
+        width * 0.78,
+        height * 0.12,
+        width * 0.5,
+      );
+      nebula.addColorStop(0, "rgba(40, 118, 134, .18)");
+      nebula.addColorStop(0.45, "rgba(56, 48, 96, .08)");
+      nebula.addColorStop(1, "rgba(6, 9, 20, 0)");
+      context.fillStyle = nebula;
+      context.fillRect(0, 0, width, height);
       stars.forEach((star) => {
         context.globalAlpha = 0.4 + star.size * 0.15;
         context.fillStyle = "#eef1d7";
@@ -470,6 +496,25 @@ export function MoonGoonsGame() {
         );
       });
       context.globalAlpha = 1;
+      context.fillStyle = "#263d5d";
+      context.beginPath();
+      context.arc(width * 0.86 + ox * 0.008, height * 0.14 + oy * 0.008, 46, 0, Math.PI * 2);
+      context.fill();
+      const planetLight = context.createRadialGradient(
+        width * 0.84,
+        height * 0.12,
+        4,
+        width * 0.86,
+        height * 0.14,
+        46,
+      );
+      planetLight.addColorStop(0, "rgba(135, 223, 219, .8)");
+      planetLight.addColorStop(0.38, "rgba(68, 119, 147, .7)");
+      planetLight.addColorStop(1, "rgba(13, 22, 43, .9)");
+      context.fillStyle = planetLight;
+      context.beginPath();
+      context.arc(width * 0.86 + ox * 0.008, height * 0.14 + oy * 0.008, 46, 0, Math.PI * 2);
+      context.fill();
 
       context.save();
       context.translate(ox, oy);
@@ -520,6 +565,53 @@ export function MoonGoonsGame() {
         context.fill();
       });
 
+      terrainDetails.forEach((detail) => {
+        context.save();
+        context.translate(detail.x, detail.y);
+        context.rotate(detail.rotation);
+        context.fillStyle = detail.size > 8 ? "rgba(28,31,43,.78)" : "rgba(215,216,214,.13)";
+        context.beginPath();
+        context.moveTo(-detail.size, detail.size * 0.45);
+        context.lineTo(-detail.size * 0.4, -detail.size * 0.8);
+        context.lineTo(detail.size * 0.8, -detail.size * 0.25);
+        context.lineTo(detail.size, detail.size * 0.65);
+        context.closePath();
+        context.fill();
+        context.restore();
+      });
+
+      // Abandoned company rover: an environmental toy and visual landmark.
+      context.save();
+      context.translate(1030, 680);
+      context.rotate(-0.12);
+      context.fillStyle = "#d8d3b9";
+      context.beginPath();
+      context.roundRect(-55, -28, 110, 48, 11);
+      context.fill();
+      context.fillStyle = "#d9a92b";
+      context.fillRect(-50, 3, 100, 15);
+      context.fillStyle = "#182635";
+      context.fillRect(-31, -21, 54, 20);
+      context.strokeStyle = "#e8c34d";
+      context.lineWidth = 5;
+      context.beginPath();
+      context.moveTo(34, -24);
+      context.lineTo(57, -63);
+      context.lineTo(67, -63);
+      context.stroke();
+      context.fillStyle = "#ff6c61";
+      context.fillRect(60, -70, 15, 12);
+      [-42, 38].forEach((wheelX) => {
+        context.fillStyle = "#151824";
+        context.beginPath();
+        context.arc(wheelX, 24, 19, 0, Math.PI * 2);
+        context.fill();
+        context.strokeStyle = "#777a82";
+        context.lineWidth = 4;
+        context.stroke();
+      });
+      context.restore();
+
       // Landing ship and cargo bay.
       context.save();
       context.translate(SHIP.x, SHIP.y);
@@ -542,6 +634,21 @@ export function MoonGoonsGame() {
       context.lineTo(-112, 28);
       context.closePath();
       context.fill();
+      context.fillStyle = "#8e917f";
+      context.beginPath();
+      context.moveTo(-90, 69);
+      context.lineTo(-128, 126);
+      context.lineTo(-105, 126);
+      context.lineTo(-61, 81);
+      context.closePath();
+      context.fill();
+      context.beginPath();
+      context.moveTo(71, 66);
+      context.lineTo(119, 117);
+      context.lineTo(140, 108);
+      context.lineTo(92, 48);
+      context.closePath();
+      context.fill();
       context.fillStyle = "#1d5260";
       context.fillRect(-62, -47, 96, 54);
       context.fillStyle = "#ffd85a";
@@ -553,6 +660,16 @@ export function MoonGoonsGame() {
       context.fillStyle = "#ff865e";
       context.fillRect(68, -50, 22, 20);
       context.fillRect(-102, -18, 20, 20);
+      context.strokeStyle = "#d8d3b9";
+      context.lineWidth = 4;
+      context.beginPath();
+      context.moveTo(35, -100);
+      context.lineTo(46, -148);
+      context.stroke();
+      context.fillStyle = "#6ee7e4";
+      context.beginPath();
+      context.arc(47, -153, 7, 0, Math.PI * 2);
+      context.fill();
       context.restore();
 
       depositsRef.current.forEach((deposit) => {
@@ -583,6 +700,16 @@ export function MoonGoonsGame() {
             context.fillStyle = deposit.progress > 75 ? "#ff865e" : "#6ee7e4";
             context.fillRect(deposit.x - 40, deposit.y + 48, 80 * (deposit.progress / 100), 8);
           }
+          if (deposit.scanGlow > 0.15 || distance(player.x, player.y, deposit.x, deposit.y) < 180) {
+            context.fillStyle = "rgba(7,10,20,.86)";
+            context.fillRect(deposit.x - 58, deposit.y - 70, 116, 25);
+            context.strokeStyle = "rgba(110,231,228,.5)";
+            context.strokeRect(deposit.x - 58, deposit.y - 70, 116, 25);
+            context.fillStyle = "#d9ffff";
+            context.font = "700 10px monospace";
+            context.textAlign = "center";
+            context.fillText(data.name.toUpperCase(), deposit.x, deposit.y - 53);
+          }
         } else if (deposit.state === "cargo") {
           context.save();
           context.translate(deposit.x, deposit.y);
@@ -605,6 +732,41 @@ export function MoonGoonsGame() {
         }
       });
 
+      const visualDrillTarget = depositsRef.current
+        .filter((deposit) => deposit.state === "revealed" || deposit.state === "extracting")
+        .sort(
+          (a, b) =>
+            distance(player.x, player.y, a.x, a.y) -
+            distance(player.x, player.y, b.x, b.y),
+        )[0];
+      if (
+        phase === "active" &&
+        keys.has("KeyF") &&
+        visualDrillTarget &&
+        distance(player.x, player.y, visualDrillTarget.x, visualDrillTarget.y) < 115 &&
+        !overheatedRef.current
+      ) {
+        const sparkPhase = now * 0.02;
+        context.strokeStyle = "rgba(255,134,94,.9)";
+        context.lineWidth = 7;
+        context.beginPath();
+        context.moveTo(player.x, player.y - player.z * 0.34);
+        context.lineTo(visualDrillTarget.x, visualDrillTarget.y);
+        context.stroke();
+        context.strokeStyle = "rgba(255,216,90,.45)";
+        context.lineWidth = 2;
+        for (let spark = 0; spark < 5; spark += 1) {
+          const angle = sparkPhase + spark * 1.26;
+          context.beginPath();
+          context.moveTo(visualDrillTarget.x, visualDrillTarget.y);
+          context.lineTo(
+            visualDrillTarget.x + Math.cos(angle) * 24,
+            visualDrillTarget.y + Math.sin(angle) * 24,
+          );
+          context.stroke();
+        }
+      }
+
       // Player shadow, body, helmet, and carried sample.
       context.save();
       context.translate(player.x, player.y);
@@ -620,6 +782,13 @@ export function MoonGoonsGame() {
       context.beginPath();
       context.roundRect(-20, -28, 40, 57, 13);
       context.fill();
+      context.fillStyle = "#202a35";
+      context.beginPath();
+      context.roundRect(-24, -4, 8, 25, 3);
+      context.fill();
+      context.beginPath();
+      context.roundRect(16, -4, 8, 25, 3);
+      context.fill();
       context.fillStyle = "#cf4059";
       context.fillRect(-23, 4, 7, 19);
       context.fillRect(16, 4, 7, 19);
@@ -633,6 +802,10 @@ export function MoonGoonsGame() {
       context.fill();
       context.fillStyle = "#6ee7e4";
       context.fillRect(-4, -40, 8, 4);
+      context.fillStyle = "#f7f2d8";
+      context.font = "900 8px Arial";
+      context.textAlign = "center";
+      context.fillText("07", 0, 18);
       context.restore();
 
       if (scanCooldownRef.current > 3.45) {
@@ -736,7 +909,7 @@ export function MoonGoonsGame() {
       {snapshot.phase === "active" && (
         <>
           <aside className={styles.missionPanel}>
-            <span className={styles.eyebrow}>ACTIVE CONTRACT</span>
+            <div className={styles.panelCode}><span>ACTIVE CONTRACT</span><b>SP-01</b></div>
             <h2>Practice Moon Procurement</h2>
             <p>Secure ¢{CONTRACT_TARGET} in approved scientific material.</p>
             <div className={styles.progressHeader}>
@@ -806,6 +979,7 @@ export function MoonGoonsGame() {
       {snapshot.phase === "briefing" && (
         <section className={styles.overlay}>
           <div className={styles.briefingCard}>
+            <div className={styles.keyArt} aria-hidden="true" />
             <div className={styles.companyLine}>
               <span>S.P.A.C.E.</span>
               SCIENTIFIC PROCUREMENT AND COLLECTION ENTERPRISE

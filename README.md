@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 001: a single-player Practice Moon mission that proves the core loop of scanning, extracting, transporting, and escaping.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 002: a single-player Practice Moon mission that proves the core loop and establishes the game’s visual language.
 
 ## Playable build
 
@@ -48,4 +48,9 @@ pnpm run build
 
 ## Current milestone
 
-This is the first-playable implementation milestone. Multiplayer, progression, additional destinations, controller support, and desktop/Steam packaging remain future milestones.
+This is the first-playable and visual-foundation milestone. Multiplayer, progression, additional destinations, controller support, and desktop/Steam packaging remain future milestones.
+
+## Design references
+
+- [Game Design Bible](docs/GAME_DESIGN_BIBLE.md)
+- [Visual Direction](docs/VISUAL_DIRECTION.md)
