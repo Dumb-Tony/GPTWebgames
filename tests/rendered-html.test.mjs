@@ -29,9 +29,10 @@ test("server-renders the Moon Goons mission shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Moon Goons — Practice Moon \| Moon Goons<\/title>/i);
-  assert.match(html, /GOOD SCIENCE/);
-  assert.match(html, /BAD EQUIPMENT/);
-  assert.match(html, /ACCEPT LIABILITY/);
-  assert.match(html, /FIELD ORIENTATION \/\/ PRACTICE MOON/);
+  assert.match(html, /SUIT UP/);
+  assert.match(html, /TRY NOT TO FLOAT/);
+  assert.match(html, /ACCEPT LIABILITY \+ ENTER 3D/);
+  assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
+  assert.match(html, /3D AESTHETIC VERTICAL SLICE \/\/ PRACTICE MOON/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
