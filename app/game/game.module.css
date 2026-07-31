@@ -204,7 +204,8 @@
 .miniStats,
 .heatLabel,
 .scanStatus,
-.fuelLabel {
+.fuelLabel,
+.signalTelemetry {
   font-family: monospace;
 }
 
@@ -241,7 +242,8 @@
 .progressHeader,
 .heatLabel,
 .scanStatus,
-.fuelLabel {
+.fuelLabel,
+.signalTelemetry {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
@@ -330,6 +332,17 @@
 
 .scanStatus strong {
   color: var(--cyan);
+}
+
+.signalTelemetry {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.06em;
+}
+
+.signalTelemetry strong {
+  color: var(--ink);
 }
 
 .fuelLabel {

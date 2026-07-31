@@ -45,12 +45,15 @@ type Snapshot = {
   heat: number;
   overheated: boolean;
   carrying: string | null;
+  cargoCondition: number | null;
   message: string;
   scanCooldown: number;
   depositsSecured: number;
   prompt: string;
   homeDistance: number;
   thrusterFuel: number;
+  signalsTracked: number;
+  nearestSignalDistance: number | null;
 };
 
 const cargoData: Record<CargoKind, CargoDefinition> = {
@@ -587,6 +590,59 @@ function createDust() {
   );
 }
 
+function createHorizonRidges() {
+  const ridges = new THREE.Group();
+  const random = seededRandom(441);
+  for (let index = 0; index < 34; index += 1) {
+    const angle = (index / 34) * Math.PI * 2 + (random() - 0.5) * 0.08;
+    const distance = 43.5 + random() * 3.2;
+    const width = 2.4 + random() * 4.8;
+    const height = 2.8 + random() * 8.5;
+    const ridge = new THREE.Mesh(
+      new THREE.ConeGeometry(width, height, 5 + Math.floor(random() * 3)),
+      standardMaterial(index % 4 === 0 ? 0x30333f : 0x3b3e4a, {
+        roughness: 1,
+      }),
+    );
+    ridge.position.set(
+      Math.cos(angle) * distance,
+      height * 0.46 - 0.25,
+      Math.sin(angle) * distance,
+    );
+    ridge.rotation.y = random() * Math.PI;
+    ridge.scale.z = 0.68 + random() * 0.72;
+    ridge.castShadow = true;
+    ridge.receiveShadow = true;
+    ridges.add(ridge);
+  }
+  return ridges;
+}
+
+function createMeteorStreaks() {
+  const streaks = new THREE.Group();
+  const random = seededRandom(704);
+  for (let index = 0; index < 7; index += 1) {
+    const length = 5 + random() * 8;
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(-length, length * 0.28, length * 0.16),
+    ]);
+    const streak = new THREE.Line(
+      geometry,
+      new THREE.LineBasicMaterial({
+        color: index % 3 === 0 ? palette.cyan : 0xecebdc,
+        transparent: true,
+        opacity: 0.22 + random() * 0.32,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    streak.position.set(-80 + random() * 130, 24 + random() * 46, -35 - random() * 95);
+    streak.userData.speed = 4 + random() * 8;
+    streaks.add(streak);
+  }
+  return streaks;
+}
+
 function createCrater(x: number, z: number, radius: number) {
   const crater = new THREE.Group();
   crater.position.set(x, 0.03, z);
@@ -610,6 +666,7 @@ function createWorld(scene: THREE.Scene) {
   scene.add(createMoonSurface());
   scene.add(createStars());
   scene.add(createDust());
+  scene.add(createHorizonRidges());
   scene.add(createCrater(-6, -2, 4.5));
   scene.add(createCrater(13, -15, 5.8));
   scene.add(createCrater(22, 13, 4));
@@ -634,8 +691,10 @@ function createWorld(scene: THREE.Scene) {
 
   const ship = createShip();
   const rover = createRover();
+  const meteorStreaks = createMeteorStreaks();
   scene.add(ship);
   scene.add(rover);
+  scene.add(meteorStreaks);
 
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(7, 28, 20),
@@ -660,7 +719,7 @@ function createWorld(scene: THREE.Scene) {
   earthCloud.position.copy(earth.position);
   scene.add(earthCloud);
 
-  return { ship, rover, earth, earthCloud };
+  return { ship, rover, earth, earthCloud, meteorStreaks };
 }
 
 export function MoonGoonsGame() {
@@ -686,12 +745,15 @@ export function MoonGoonsGame() {
     heat: 0,
     overheated: false,
     carrying: null,
+    cargoCondition: null,
     message: INITIAL_MESSAGE,
     scanCooldown: 0,
     depositsSecured: 0,
     prompt: "Q · SCAN FOR VALUABLE MATERIAL",
     homeDistance: 7,
     thrusterFuel: 100,
+    signalsTracked: 0,
+    nearestSignalDistance: null,
   });
 
   const sound = useCallback(
@@ -816,6 +878,34 @@ export function MoonGoonsGame() {
     const drillGlow = new THREE.PointLight(palette.coral, 0, 8, 2);
     scene.add(drillGlow);
 
+    const dustBursts = Array.from({ length: 12 }, () => {
+      const mesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.34, 0.56, 18),
+        new THREE.MeshBasicMaterial({
+          color: 0xd9d3c1,
+          transparent: true,
+          opacity: 0,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        }),
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.visible = false;
+      scene.add(mesh);
+      return { mesh, age: 1, duration: 1, strength: 1 };
+    });
+    let dustCursor = 0;
+    const emitDustBurst = (position: THREE.Vector3, strength = 1) => {
+      const burst = dustBursts[dustCursor];
+      dustCursor = (dustCursor + 1) % dustBursts.length;
+      burst.age = 0;
+      burst.duration = 0.55 + strength * 0.28;
+      burst.strength = strength;
+      burst.mesh.position.set(position.x, 0.09, position.z);
+      burst.mesh.scale.setScalar(0.4 + strength * 0.22);
+      burst.mesh.visible = true;
+    };
+
     const carriedAnchor = new THREE.Object3D();
     carriedAnchor.position.set(0, 2.05, -2.05);
     astronaut.add(carriedAnchor);
@@ -828,6 +918,7 @@ export function MoonGoonsGame() {
     let hudTimer = 0;
     let warningPlayed = false;
     let stepTimer = 0;
+    let cameraImpact = 0;
     let animationFrame = 0;
     let previous = performance.now();
 
@@ -851,6 +942,11 @@ export function MoonGoonsGame() {
       overheatedRef.current = false;
       scanCooldownRef.current = 0;
       warningPlayed = false;
+      cameraImpact = 0;
+      dustBursts.forEach((burst) => {
+        burst.age = 1;
+        burst.mesh.visible = false;
+      });
       resetDeposits();
     };
 
@@ -959,6 +1055,7 @@ export function MoonGoonsGame() {
           verticalVelocity =
             carried?.kind === "platinum" ? JUMP_VELOCITY * 0.72 : JUMP_VELOCITY;
           playerHeight = 0.02;
+          emitDustBurst(astronaut.position, carried ? 0.8 : 0.62);
         }
         const thrusterActive =
           keys.has("Space") && playerHeight > 0.38 && thrusterFuel > 0;
@@ -977,8 +1074,14 @@ export function MoonGoonsGame() {
           verticalVelocity -= MOON_GRAVITY * dt;
           playerHeight += verticalVelocity * dt;
           if (playerHeight <= 0) {
+            const landingSpeed = Math.abs(verticalVelocity);
             playerHeight = 0;
             verticalVelocity = 0;
+            if (landingSpeed > 1.7) {
+              const impactStrength = Math.min(1.8, landingSpeed / 4.8);
+              emitDustBurst(astronaut.position, impactStrength);
+              cameraImpact = Math.max(cameraImpact, impactStrength);
+            }
           }
         }
 
@@ -1031,6 +1134,7 @@ export function MoonGoonsGame() {
           if (stepTimer <= 0) {
             stepTimer = 0.48 / Math.max(speedFactor, 0.6);
             sound("step");
+            emitDustBurst(astronaut.position, 0.28);
           }
         }
 
@@ -1158,6 +1262,14 @@ export function MoonGoonsGame() {
                 messageRef.current = `${cargoData[held.kind].name} secured for ¢${earned}. S.P.A.C.E. owns it now.`;
                 sound("secure");
               } else {
+                const roughDrop = playerHeight > 0.3 || velocity.length() > 4;
+                if (roughDrop) {
+                  const damageScale =
+                    held.kind === "glass" ? 0.19 : held.kind === "ferric" ? 0.07 : 0.025;
+                  const impact =
+                    0.7 + Math.min(1.4, playerHeight * 0.16 + velocity.length() * 0.055);
+                  held.condition = Math.max(0.42, held.condition - damageScale * impact);
+                }
                 scene.attach(held.group);
                 const dropDirection = new THREE.Vector3(0, 0, -2.3).applyQuaternion(
                   astronaut.quaternion,
@@ -1165,7 +1277,9 @@ export function MoonGoonsGame() {
                 held.group.position.copy(astronaut.position).add(dropDirection);
                 held.group.position.y = 0.62;
                 carryingRef.current = null;
-                messageRef.current = `${cargoData[held.kind].name} placed gently-ish.`;
+                messageRef.current = roughDrop
+                  ? `${cargoData[held.kind].name} survived a questionable drop at ${Math.round(held.condition * 100)}% condition.`
+                  : `${cargoData[held.kind].name} placed with suspicious competence.`;
               }
             }
           } else {
@@ -1211,6 +1325,44 @@ export function MoonGoonsGame() {
         }
       }
 
+      dustBursts.forEach((burst) => {
+        if (!burst.mesh.visible) return;
+        burst.age += dt;
+        const progress = burst.age / burst.duration;
+        if (progress >= 1) {
+          burst.mesh.visible = false;
+          return;
+        }
+        const scale = (0.4 + progress * 3.2) * burst.strength;
+        burst.mesh.scale.setScalar(scale);
+        (burst.mesh.material as THREE.MeshBasicMaterial).opacity =
+          (1 - progress) * 0.34 * burst.strength;
+      });
+
+      world.meteorStreaks.children.forEach((streak) => {
+        const speed = streak.userData.speed as number;
+        streak.position.x += dt * speed;
+        streak.position.y -= dt * speed * 0.24;
+        if (streak.position.x > 82 || streak.position.y < 14) {
+          streak.position.x = -86;
+          streak.position.y = 34 + ((streak.id * 17) % 36);
+        }
+      });
+
+      const finalWindow = phase === "active" && timeRef.current <= 30;
+      sun.intensity = THREE.MathUtils.damp(
+        sun.intensity,
+        finalWindow ? 3.65 + Math.sin(now * 0.012) * 0.28 : 4.6,
+        3,
+        dt,
+      );
+      cyanRim.intensity = THREE.MathUtils.damp(
+        cyanRim.intensity,
+        finalWindow ? 2.35 : 1.25,
+        3,
+        dt,
+      );
+
       const beaconPulse = 0.72 + Math.sin(now * 0.0035) * 0.22;
       const guideBeam = world.ship.userData.guideBeam as THREE.Mesh;
       const guideBeamMaterial = guideBeam.material as THREE.MeshBasicMaterial;
@@ -1230,6 +1382,11 @@ export function MoonGoonsGame() {
         .clone()
         .addScaledVector(forward, -10.5)
         .add(new THREE.Vector3(0, 8.3 + playerHeight * 0.2, 0));
+      if (cameraImpact > 0.01) {
+        desiredCamera.x += Math.sin(now * 0.065) * cameraImpact * 0.22;
+        desiredCamera.y += Math.cos(now * 0.052) * cameraImpact * 0.15;
+        cameraImpact = Math.max(0, cameraImpact - dt * 3.8);
+      }
       camera.position.lerp(desiredCamera, 1 - Math.exp(-dt * 4.5));
       const targetFov = 52 + Math.min(4, velocity.length() * 0.32);
       camera.fov = THREE.MathUtils.damp(camera.fov, targetFov, 5, dt);
@@ -1260,6 +1417,16 @@ export function MoonGoonsGame() {
             (deposit) =>
               deposit.state === "revealed" || deposit.state === "extracting",
           )
+          .sort(
+            (a, b) =>
+              a.position.distanceTo(astronaut.position) -
+              b.position.distanceTo(astronaut.position),
+          )[0];
+        const trackedSignals = deposits.filter(
+          (deposit) => deposit.state !== "hidden" && deposit.state !== "secured",
+        );
+        const nearestTracked = trackedSignals
+          .filter((deposit) => deposit.state !== "secured")
           .sort(
             (a, b) =>
               a.position.distanceTo(astronaut.position) -
@@ -1299,12 +1466,17 @@ export function MoonGoonsGame() {
           heat: heatRef.current,
           overheated: overheatedRef.current,
           carrying: held ? cargoData[held.kind].name : null,
+          cargoCondition: held ? held.condition : null,
           message: messageRef.current,
           scanCooldown: scanCooldownRef.current,
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
           prompt,
           homeDistance,
           thrusterFuel,
+          signalsTracked: trackedSignals.length,
+          nearestSignalDistance: nearestTracked
+            ? nearestTracked.position.distanceTo(astronaut.position)
+            : null,
         });
       }
 
@@ -1320,7 +1492,11 @@ export function MoonGoonsGame() {
       window.removeEventListener("keyup", onKeyUp);
       resetRuntimeRef.current = null;
       scene.traverse((object) => {
-        if (object instanceof THREE.Mesh || object instanceof THREE.Points) {
+        if (
+          object instanceof THREE.Mesh ||
+          object instanceof THREE.Points ||
+          object instanceof THREE.Line
+        ) {
           object.geometry.dispose();
           const materials = Array.isArray(object.material)
             ? object.material
@@ -1345,12 +1521,15 @@ export function MoonGoonsGame() {
       heat: 0,
       overheated: false,
       carrying: null,
+      cargoCondition: null,
       message: messageRef.current,
       scanCooldown: 0,
       depositsSecured: 0,
       prompt: "Q · SCAN FOR VALUABLE MATERIAL",
       homeDistance: 7,
       thrusterFuel: 100,
+      signalsTracked: 0,
+      nearestSignalDistance: null,
     });
     sound("launch");
   }, [sound]);
@@ -1372,7 +1551,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 006 // 3D SLICE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 007 // 3D SLICE</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1411,7 +1590,11 @@ export function MoonGoonsGame() {
             </div>
             <div className={styles.miniStats}>
               <span>{snapshot.depositsSecured} samples secured</span>
-              <span>{snapshot.carrying ?? "Hands regrettably empty"}</span>
+              <span>
+                {snapshot.carrying
+                  ? `${snapshot.carrying} // ${Math.round((snapshot.cargoCondition ?? 1) * 100)}%`
+                  : "Hands regrettably empty"}
+              </span>
             </div>
           </aside>
 
@@ -1441,6 +1624,14 @@ export function MoonGoonsGame() {
                 {snapshot.scanCooldown <= 0
                   ? "READY"
                   : `CHARGING ${snapshot.scanCooldown.toFixed(1)}s`}
+              </strong>
+            </div>
+            <div className={styles.signalTelemetry}>
+              <span>{snapshot.signalsTracked} TRACKED</span>
+              <strong>
+                {snapshot.nearestSignalDistance === null
+                  ? "NO CONTACT"
+                  : `NEAREST ${Math.round(snapshot.nearestSignalDistance)}m`}
               </strong>
             </div>
             <div className={styles.fuelLabel}>
