@@ -7,5 +7,6 @@ export const fieldNotes = sqliteTable("field_notes", {
   category: text("category").notNull().default("idea"),
   content: text("content").notNull(),
   build: text("build").notNull().default("003"),
+  status: text("status").notNull().default("open"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });

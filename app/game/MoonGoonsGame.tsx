@@ -8,6 +8,8 @@ import styles from "./game.module.css";
 const CONTRACT_TARGET = 900;
 const MISSION_SECONDS = 180;
 const MOON_RADIUS = 48;
+const MOON_GRAVITY = 4.35;
+const JUMP_VELOCITY = 6.1;
 const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
 const SHIP_POSITION = new THREE.Vector3(-19, 0, 5);
 
@@ -894,7 +896,9 @@ export function MoonGoonsGame() {
         const moving = driveInput !== 0;
 
         if (turnInput !== 0) {
-          const turnSpeed = (carried ? 2.05 : 2.65) * (moving ? 1 : 0.78);
+          const airborneTurn = playerHeight > 0.05 ? 0.52 : 1;
+          const turnSpeed =
+            (carried ? 2.05 : 2.65) * (moving ? 1 : 0.78) * airborneTurn;
           astronaut.rotation.y += turnInput * turnSpeed * dt;
         }
 
@@ -904,29 +908,32 @@ export function MoonGoonsGame() {
           );
           const reverseMultiplier = driveInput < 0 ? 0.62 : 1;
           const targetSpeed = 9.2 * speedFactor * reverseMultiplier * driveInput;
+          const movementResponse = playerHeight > 0.05 ? 2.15 : 8;
           velocity.x = THREE.MathUtils.damp(
             velocity.x,
             forwardDirection.x * targetSpeed,
-            8,
+            movementResponse,
             dt,
           );
           velocity.z = THREE.MathUtils.damp(
             velocity.z,
             forwardDirection.z * targetSpeed,
-            8,
+            movementResponse,
             dt,
           );
         } else {
-          velocity.x = THREE.MathUtils.damp(velocity.x, 0, 7, dt);
-          velocity.z = THREE.MathUtils.damp(velocity.z, 0, 7, dt);
+          const momentumDrag = playerHeight > 0.05 ? 0.42 : 7;
+          velocity.x = THREE.MathUtils.damp(velocity.x, 0, momentumDrag, dt);
+          velocity.z = THREE.MathUtils.damp(velocity.z, 0, momentumDrag, dt);
         }
 
         if (keys.has("Space") && playerHeight <= 0.01) {
-          verticalVelocity = carried?.kind === "platinum" ? 4.6 : 6.8;
+          verticalVelocity =
+            carried?.kind === "platinum" ? JUMP_VELOCITY * 0.72 : JUMP_VELOCITY;
           playerHeight = 0.02;
         }
         if (playerHeight > 0 || verticalVelocity > 0) {
-          verticalVelocity -= 8.4 * dt;
+          verticalVelocity -= MOON_GRAVITY * dt;
           playerHeight += verticalVelocity * dt;
           if (playerHeight <= 0) {
             playerHeight = 0;
@@ -1301,7 +1308,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 004 // 3D SLICE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 005 // 3D SLICE</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
