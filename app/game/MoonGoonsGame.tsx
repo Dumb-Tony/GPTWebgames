@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { FieldNotes } from "./FieldNotes";
 import styles from "./game.module.css";
 
 const CONTRACT_TARGET = 900;
@@ -609,7 +610,9 @@ export function MoonGoonsGame() {
   const carryingRef = useRef<number | null>(null);
   const interactLatchRef = useRef(false);
   const scanLatchRef = useRef(false);
+  const notesOpenRef = useRef(false);
   const resetRuntimeRef = useRef<(() => void) | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot>({
     phase: "briefing",
     time: MISSION_SECONDS,
@@ -658,6 +661,12 @@ export function MoonGoonsGame() {
     },
     [],
   );
+
+  const handleNotesOpenChange = useCallback((open: boolean) => {
+    notesOpenRef.current = open;
+    keysRef.current.clear();
+    setNotesOpen(open);
+  }, []);
 
   useEffect(() => {
     const mount = mountRef.current;
@@ -786,12 +795,21 @@ export function MoonGoonsGame() {
     window.addEventListener("resize", onResize);
 
     const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (
+        target instanceof HTMLElement &&
+        target.closest("input, textarea, select, button")
+      ) {
+        return;
+      }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) {
         event.preventDefault();
       }
       keysRef.current.add(event.code);
     };
-    const onKeyUp = (event: KeyboardEvent) => keysRef.current.delete(event.code);
+    const onKeyUp = (event: KeyboardEvent) => {
+      keysRef.current.delete(event.code);
+    };
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
 
@@ -814,7 +832,7 @@ export function MoonGoonsGame() {
       const keys = keysRef.current;
       const phase = phaseRef.current;
 
-      if (phase === "active") {
+      if (phase === "active" && !notesOpenRef.current) {
         timeRef.current = Math.max(0, timeRef.current - dt);
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
 
@@ -1186,6 +1204,8 @@ export function MoonGoonsGame() {
           <strong>{formatTime(snapshot.time)}</strong>
         </div>
       </header>
+
+      <FieldNotes open={notesOpen} onOpenChange={handleNotesOpenChange} />
 
       {snapshot.phase === "active" && (
         <>

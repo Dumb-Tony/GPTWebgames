@@ -18,6 +18,13 @@ The first prototype includes:
 - A ship cargo bay and extraction target
 - A three-minute departure window
 - Success, failure, debrief, and immediate restart
+- A shared Field Notes board for remote playtest feedback
+
+## Shared playtesting
+
+Open **FIELD NOTES** from the mission screen to record visual feedback, control issues,
+bugs, gameplay observations, and new ideas. Notes are shared across devices so collaborators
+using the public build can review and add to the same development log.
 
 ## Controls
 
