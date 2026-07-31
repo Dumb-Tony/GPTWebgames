@@ -46,6 +46,8 @@ type Snapshot = {
   message: string;
   scanCooldown: number;
   depositsSecured: number;
+  prompt: string;
+  homeDistance: number;
 };
 
 const cargoData: Record<CargoKind, CargoDefinition> = {
@@ -244,6 +246,39 @@ function createShip() {
   const cargoGlow = new THREE.PointLight(palette.yellow, 12, 16, 2);
   cargoGlow.position.set(6, 2.2, 1.2);
   ship.add(cargoGlow);
+
+  const guideBeam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.18, 1.7, 24, 16, 1, true),
+    new THREE.MeshBasicMaterial({
+      color: palette.yellow,
+      transparent: true,
+      opacity: 0.1,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    }),
+  );
+  guideBeam.position.set(6, 12.2, 1.2);
+  ship.add(guideBeam);
+
+  const guideRings = [7, 12, 17].map((height, index) => {
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(1.35 + index * 0.22, 0.045, 8, 48),
+      new THREE.MeshBasicMaterial({
+        color: palette.yellow,
+        transparent: true,
+        opacity: 0.5,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+      }),
+    );
+    ring.position.set(6, height, 1.2);
+    ring.rotation.x = Math.PI / 2;
+    ship.add(ring);
+    return ring;
+  });
+  ship.userData.guideBeam = guideBeam;
+  ship.userData.guideRings = guideRings;
 
   return ship;
 }
@@ -570,8 +605,10 @@ function createWorld(scene: THREE.Scene) {
     scene.add(rock);
   }
 
-  scene.add(createShip());
-  scene.add(createRover());
+  const ship = createShip();
+  const rover = createRover();
+  scene.add(ship);
+  scene.add(rover);
 
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(7, 28, 20),
@@ -595,6 +632,8 @@ function createWorld(scene: THREE.Scene) {
   );
   earthCloud.position.copy(earth.position);
   scene.add(earthCloud);
+
+  return { ship, rover, earth, earthCloud };
 }
 
 export function MoonGoonsGame() {
@@ -623,6 +662,8 @@ export function MoonGoonsGame() {
     message: INITIAL_MESSAGE,
     scanCooldown: 0,
     depositsSecured: 0,
+    prompt: "Q · SCAN FOR VALUABLE MATERIAL",
+    homeDistance: 7,
   });
 
   const sound = useCallback(
@@ -712,7 +753,7 @@ export function MoonGoonsGame() {
     cyanRim.position.set(28, 12, -34);
     scene.add(cyanRim);
 
-    createWorld(scene);
+    const world = createWorld(scene);
     const astronaut = createAstronaut();
     scene.add(astronaut);
 
@@ -1103,12 +1144,29 @@ export function MoonGoonsGame() {
         }
       }
 
+      const beaconPulse = 0.72 + Math.sin(now * 0.0035) * 0.22;
+      const guideBeam = world.ship.userData.guideBeam as THREE.Mesh;
+      const guideBeamMaterial = guideBeam.material as THREE.MeshBasicMaterial;
+      guideBeamMaterial.opacity = 0.07 + beaconPulse * 0.045;
+      const guideRings = world.ship.userData.guideRings as THREE.Mesh[];
+      guideRings.forEach((ring, index) => {
+        const cycle = (now * 0.00032 + index / guideRings.length) % 1;
+        const scale = 0.72 + cycle * 0.72;
+        ring.scale.setScalar(scale);
+        (ring.material as THREE.MeshBasicMaterial).opacity = (1 - cycle) * 0.62;
+      });
+      world.earth.rotation.y += dt * 0.018;
+      world.earthCloud.rotation.y -= dt * 0.026;
+
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(astronaut.quaternion);
       const desiredCamera = astronaut.position
         .clone()
         .addScaledVector(forward, -10.5)
         .add(new THREE.Vector3(0, 8.3 + playerHeight * 0.2, 0));
       camera.position.lerp(desiredCamera, 1 - Math.exp(-dt * 4.5));
+      const targetFov = 52 + Math.min(4, velocity.length() * 0.32);
+      camera.fov = THREE.MathUtils.damp(camera.fov, targetFov, 5, dt);
+      camera.updateProjectionMatrix();
       const lookAt = astronaut.position
         .clone()
         .add(new THREE.Vector3(0, 3.1, 0))
@@ -1122,6 +1180,49 @@ export function MoonGoonsGame() {
       if (hudTimer >= 0.09) {
         hudTimer = 0;
         const held = deposits.find((deposit) => deposit.id === carryingRef.current);
+        const homeDistance = astronaut.position.distanceTo(SHIP_POSITION);
+        const nearbyCargo = deposits
+          .filter((deposit) => deposit.state === "cargo")
+          .sort(
+            (a, b) =>
+              a.position.distanceTo(astronaut.position) -
+              b.position.distanceTo(astronaut.position),
+          )[0];
+        const nearbySignal = deposits
+          .filter(
+            (deposit) =>
+              deposit.state === "revealed" || deposit.state === "extracting",
+          )
+          .sort(
+            (a, b) =>
+              a.position.distanceTo(astronaut.position) -
+              b.position.distanceTo(astronaut.position),
+          )[0];
+        let prompt = "Q · SCAN FOR VALUABLE MATERIAL";
+        if (held) {
+          prompt =
+            homeDistance < 7.2
+              ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
+              : `RETURN CARGO TO SHIP · ${Math.round(homeDistance)}m`;
+        } else if (
+          nearbyCargo &&
+          nearbyCargo.position.distanceTo(astronaut.position) < 3.2
+        ) {
+          prompt = `E · PICK UP ${cargoData[nearbyCargo.kind].name.toUpperCase()}`;
+        } else if (
+          nearbySignal &&
+          nearbySignal.position.distanceTo(astronaut.position) < 3
+        ) {
+          prompt = overheatedRef.current
+            ? "DRILL COOLING · PLEASE PRETEND THIS IS NORMAL"
+            : `HOLD F · EXTRACT ${cargoData[nearbySignal.kind].name.toUpperCase()} · ${Math.round(nearbySignal.progress)}%`;
+        } else if (scoreRef.current >= CONTRACT_TARGET && homeDistance < 7.2) {
+          prompt = "E · LAUNCH WITH CONTRACT SECURED";
+        } else if (nearbySignal) {
+          prompt = `SIGNAL AHEAD · ${Math.round(
+            nearbySignal.position.distanceTo(astronaut.position),
+          )}m`;
+        }
         setSnapshot({
           phase: phaseRef.current,
           time: timeRef.current,
@@ -1132,6 +1233,8 @@ export function MoonGoonsGame() {
           message: messageRef.current,
           scanCooldown: scanCooldownRef.current,
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
+          prompt,
+          homeDistance,
         });
       }
 
@@ -1175,6 +1278,8 @@ export function MoonGoonsGame() {
       message: messageRef.current,
       scanCooldown: 0,
       depositsSecured: 0,
+      prompt: "Q · SCAN FOR VALUABLE MATERIAL",
+      homeDistance: 7,
     });
     sound("launch");
   }, [sound]);
@@ -1196,7 +1301,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 003 // 3D SLICE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 004 // 3D SLICE</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1209,6 +1314,14 @@ export function MoonGoonsGame() {
 
       {snapshot.phase === "active" && (
         <>
+          <div className={styles.homeReadout}>
+            <span className={styles.homePulse} />
+            <div>
+              <small>LANDER BEACON</small>
+              <strong>HOME // {Math.round(snapshot.homeDistance)}m</strong>
+            </div>
+          </div>
+
           <aside className={styles.missionPanel}>
             <div className={styles.panelCode}>
               <span>ACTIVE CONTRACT</span>
@@ -1291,6 +1404,11 @@ export function MoonGoonsGame() {
           <div className={styles.radio}>
             <span>FIELD COMMS</span>
             <p>{snapshot.message}</p>
+          </div>
+
+          <div className={styles.actionPrompt}>
+            <span>CONTEXT ACTION</span>
+            <strong>{snapshot.prompt}</strong>
           </div>
 
           {snapshot.score >= CONTRACT_TARGET && (

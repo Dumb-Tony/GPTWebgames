@@ -128,6 +128,51 @@
   animation: warningPulse 0.8s steps(2, end) infinite;
 }
 
+.homeReadout {
+  position: absolute;
+  z-index: 4;
+  top: 103px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 176px;
+  padding: 9px 13px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 216, 90, 0.28);
+  background: rgba(7, 10, 20, 0.7);
+  font-family: monospace;
+  backdrop-filter: blur(8px);
+  clip-path: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+
+.homeReadout div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.homeReadout small {
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.16em;
+}
+
+.homeReadout strong {
+  color: var(--yellow);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.homePulse {
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--yellow);
+  border-radius: 50%;
+  box-shadow: 0 0 14px rgba(255, 216, 90, 0.8);
+  animation: homeBeacon 1.45s ease-out infinite;
+}
+
 .missionPanel,
 .toolPanel {
   position: absolute;
@@ -340,6 +385,46 @@
   margin: 3px 0 0;
   font-size: 12px;
   line-height: 1.35;
+}
+
+.actionPrompt {
+  position: absolute;
+  z-index: 5;
+  bottom: 105px;
+  left: 50%;
+  display: flex;
+  min-width: min(440px, 70vw);
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 20px;
+  transform: translateX(-50%);
+  border-top: 2px solid var(--cyan);
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      rgba(7, 12, 23, 0.92) 18%,
+      rgba(7, 12, 23, 0.92) 82%,
+      transparent
+    );
+  text-align: center;
+  pointer-events: none;
+}
+
+.actionPrompt span {
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 7px;
+  letter-spacing: 0.2em;
+}
+
+.actionPrompt strong {
+  color: var(--ink);
+  font-family: monospace;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 12px rgba(110, 231, 228, 0.3);
 }
 
 .launchButton {
@@ -964,6 +1049,19 @@
   }
 }
 
+@keyframes homeBeacon {
+  0% {
+    transform: scale(0.72);
+    opacity: 1;
+  }
+
+  75%,
+  100% {
+    transform: scale(1.7);
+    opacity: 0;
+  }
+}
+
 @media (max-width: 760px) {
   .shell {
     min-height: 560px;
@@ -985,9 +1083,15 @@
     font-size: 26px;
   }
 
+  .homeReadout {
+    top: 76px;
+    min-width: 150px;
+    padding: 7px 10px;
+  }
+
   .missionPanel,
   .toolPanel {
-    top: 76px;
+    top: 122px;
     width: calc(50vw - 18px);
   }
 
@@ -1038,6 +1142,11 @@
     width: 36vw;
   }
 
+  .actionPrompt {
+    bottom: 126px;
+    min-width: min(360px, 82vw);
+  }
+
   .briefingCard,
   .resultsCard {
     max-height: 94svh;
@@ -1075,7 +1184,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .urgent {
+  .urgent,
+  .homePulse {
     animation: none;
   }
 
