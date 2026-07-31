@@ -23,7 +23,10 @@ The first prototype includes:
 
 | Input | Action |
 |---|---|
-| W, A, S, D or arrow keys | Move |
+| W / Up arrow | Move forward |
+| S / Down arrow | Reverse |
+| A / Left arrow | Turn left |
+| D / Right arrow | Turn right |
 | Space | Moon hop |
 | Q | Scanner pulse |
 | Hold F | Drill |

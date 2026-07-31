@@ -824,26 +824,39 @@ export function MoonGoonsGame() {
           sound("warning");
         }
 
-        const input = new THREE.Vector3(
-          (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0) -
-            (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0),
-          0,
-          (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0) -
-            (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0),
-        );
-
         const carried = deposits.find((deposit) => deposit.id === carryingRef.current);
         const speedFactor = carried ? cargoData[carried.kind].speed : 1;
-        const moving = input.lengthSq() > 0;
+        const driveInput =
+          (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+          (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+        const turnInput =
+          (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) -
+          (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
+        const moving = driveInput !== 0;
+
+        if (turnInput !== 0) {
+          const turnSpeed = (carried ? 2.05 : 2.65) * (moving ? 1 : 0.78);
+          astronaut.rotation.y += turnInput * turnSpeed * dt;
+        }
+
         if (moving) {
-          input.normalize();
-          const targetSpeed = 9.2 * speedFactor;
-          velocity.x = THREE.MathUtils.damp(velocity.x, input.x * targetSpeed, 8, dt);
-          velocity.z = THREE.MathUtils.damp(velocity.z, input.z * targetSpeed, 8, dt);
-          const targetRotation = Math.atan2(-input.x, -input.z);
-          let rotationDelta = targetRotation - astronaut.rotation.y;
-          rotationDelta = Math.atan2(Math.sin(rotationDelta), Math.cos(rotationDelta));
-          astronaut.rotation.y += rotationDelta * Math.min(1, dt * 10);
+          const forwardDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(
+            astronaut.quaternion,
+          );
+          const reverseMultiplier = driveInput < 0 ? 0.62 : 1;
+          const targetSpeed = 9.2 * speedFactor * reverseMultiplier * driveInput;
+          velocity.x = THREE.MathUtils.damp(
+            velocity.x,
+            forwardDirection.x * targetSpeed,
+            8,
+            dt,
+          );
+          velocity.z = THREE.MathUtils.damp(
+            velocity.z,
+            forwardDirection.z * targetSpeed,
+            8,
+            dt,
+          );
         } else {
           velocity.x = THREE.MathUtils.damp(velocity.x, 0, 7, dt);
           velocity.z = THREE.MathUtils.damp(velocity.z, 0, 7, dt);
@@ -883,7 +896,7 @@ export function MoonGoonsGame() {
         rightArm.rotation.x = Math.sin(gait) * gaitAmount * 0.7;
         astronaut.rotation.z = THREE.MathUtils.damp(
           astronaut.rotation.z,
-          moving ? -input.x * 0.05 : 0,
+          turnInput * 0.055,
           8,
           dt,
         );
@@ -1230,8 +1243,12 @@ export function MoonGoonsGame() {
 
           <div className={styles.controls} aria-label="Game controls">
             <div>
-              <kbd>WASD</kbd>
-              <span>MOVE</span>
+              <kbd>W / S</kbd>
+              <span>FORWARD / REVERSE</span>
+            </div>
+            <div>
+              <kbd>A / D</kbd>
+              <span>TURN</span>
             </div>
             <div>
               <kbd>SPACE</kbd>
