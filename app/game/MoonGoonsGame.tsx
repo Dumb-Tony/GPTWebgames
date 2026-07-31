@@ -736,8 +736,10 @@ export function MoonGoonsGame() {
   const interactLatchRef = useRef(false);
   const scanLatchRef = useRef(false);
   const notesOpenRef = useRef(false);
+  const mouseCapturedRef = useRef(false);
   const resetRuntimeRef = useRef<(() => void) | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [mouseCaptured, setMouseCaptured] = useState(false);
   const [snapshot, setSnapshot] = useState<Snapshot>({
     phase: "briefing",
     time: MISSION_SECONDS,
@@ -796,6 +798,9 @@ export function MoonGoonsGame() {
   const handleNotesOpenChange = useCallback((open: boolean) => {
     notesOpenRef.current = open;
     keysRef.current.clear();
+    if (open && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
     setNotesOpen(open);
   }, []);
 
@@ -919,6 +924,7 @@ export function MoonGoonsGame() {
     let warningPlayed = false;
     let stepTimer = 0;
     let cameraImpact = 0;
+    let cameraPitch = 0;
     let animationFrame = 0;
     let previous = performance.now();
 
@@ -943,6 +949,7 @@ export function MoonGoonsGame() {
       scanCooldownRef.current = 0;
       warningPlayed = false;
       cameraImpact = 0;
+      cameraPitch = 0;
       dustBursts.forEach((burst) => {
         burst.age = 1;
         burst.mesh.visible = false;
@@ -977,8 +984,48 @@ export function MoonGoonsGame() {
     const onKeyUp = (event: KeyboardEvent) => {
       keysRef.current.delete(event.code);
     };
+    const onPointerLockChange = () => {
+      const captured = document.pointerLockElement === mount;
+      mouseCapturedRef.current = captured;
+      setMouseCaptured(captured);
+      if (!captured) keysRef.current.clear();
+    };
+    const requestMouseCapture = () => {
+      if (
+        phaseRef.current !== "active" ||
+        notesOpenRef.current ||
+        document.pointerLockElement === mount
+      ) {
+        return;
+      }
+      try {
+        void mount.requestPointerLock().catch(() => {
+          // Some browsers require another explicit click on the game view.
+        });
+      } catch {
+        // Pointer lock is a desktop enhancement; keyboard play remains available.
+      }
+    };
+    const onMouseMove = (event: MouseEvent) => {
+      if (
+        document.pointerLockElement !== mount ||
+        phaseRef.current !== "active" ||
+        notesOpenRef.current
+      ) {
+        return;
+      }
+      astronaut.rotation.y -= event.movementX * 0.00235;
+      cameraPitch = THREE.MathUtils.clamp(
+        cameraPitch - event.movementY * 0.0019,
+        -0.28,
+        0.34,
+      );
+    };
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
+    document.addEventListener("pointerlockchange", onPointerLockChange);
+    document.addEventListener("mousemove", onMouseMove);
+    mount.addEventListener("click", requestMouseCapture);
 
     const updateDrillBeam = (start: THREE.Vector3, end: THREE.Vector3) => {
       const midpoint = start.clone().add(end).multiplyScalar(0.5);
@@ -1014,34 +1061,42 @@ export function MoonGoonsGame() {
         const driveInput =
           (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
           (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
-        const turnInput =
-          (keys.has("KeyA") || keys.has("ArrowLeft") ? 1 : 0) -
-          (keys.has("KeyD") || keys.has("ArrowRight") ? 1 : 0);
-        const moving = driveInput !== 0;
+        const strafeInput =
+          (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+        const fallbackTurnInput = mouseCapturedRef.current
+          ? 0
+          : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
+        const moving = driveInput !== 0 || strafeInput !== 0;
 
-        if (turnInput !== 0) {
-          const airborneTurn = playerHeight > 0.05 ? 0.52 : 1;
-          const turnSpeed =
-            (carried ? 2.05 : 2.65) * (moving ? 1 : 0.78) * airborneTurn;
-          astronaut.rotation.y += turnInput * turnSpeed * dt;
+        if (fallbackTurnInput !== 0) {
+          astronaut.rotation.y += fallbackTurnInput * 2.35 * dt;
         }
 
         if (moving) {
           const forwardDirection = new THREE.Vector3(0, 0, -1).applyQuaternion(
             astronaut.quaternion,
           );
+          const rightDirection = new THREE.Vector3(1, 0, 0).applyQuaternion(
+            astronaut.quaternion,
+          );
+          const moveDirection = forwardDirection
+            .multiplyScalar(driveInput)
+            .addScaledVector(rightDirection, strafeInput)
+            .normalize();
           const reverseMultiplier = driveInput < 0 ? 0.62 : 1;
-          const targetSpeed = 9.2 * speedFactor * reverseMultiplier * driveInput;
+          const strafeMultiplier = driveInput === 0 && strafeInput !== 0 ? 0.86 : 1;
+          const targetSpeed =
+            9.2 * speedFactor * reverseMultiplier * strafeMultiplier;
           const movementResponse = playerHeight > 0.05 ? 2.15 : 8;
           velocity.x = THREE.MathUtils.damp(
             velocity.x,
-            forwardDirection.x * targetSpeed,
+            moveDirection.x * targetSpeed,
             movementResponse,
             dt,
           );
           velocity.z = THREE.MathUtils.damp(
             velocity.z,
-            forwardDirection.z * targetSpeed,
+            moveDirection.z * targetSpeed,
             movementResponse,
             dt,
           );
@@ -1125,7 +1180,7 @@ export function MoonGoonsGame() {
         rightArm.rotation.x = Math.sin(gait) * gaitAmount * 0.7;
         astronaut.rotation.z = THREE.MathUtils.damp(
           astronaut.rotation.z,
-          turnInput * 0.055,
+          -strafeInput * 0.065,
           8,
           dt,
         );
@@ -1325,6 +1380,10 @@ export function MoonGoonsGame() {
         }
       }
 
+      if (phaseRef.current !== "active" && document.pointerLockElement === mount) {
+        document.exitPointerLock();
+      }
+
       dustBursts.forEach((burst) => {
         if (!burst.mesh.visible) return;
         burst.age += dt;
@@ -1393,7 +1452,7 @@ export function MoonGoonsGame() {
       camera.updateProjectionMatrix();
       const lookAt = astronaut.position
         .clone()
-        .add(new THREE.Vector3(0, 3.1, 0))
+        .add(new THREE.Vector3(0, 3.1 + cameraPitch * 7.2, 0))
         .addScaledVector(forward, 2.6);
       camera.lookAt(lookAt);
 
@@ -1490,6 +1549,10 @@ export function MoonGoonsGame() {
       window.removeEventListener("resize", onResize);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      document.removeEventListener("pointerlockchange", onPointerLockChange);
+      document.removeEventListener("mousemove", onMouseMove);
+      mount.removeEventListener("click", requestMouseCapture);
+      if (document.pointerLockElement === mount) document.exitPointerLock();
       resetRuntimeRef.current = null;
       scene.traverse((object) => {
         if (
@@ -1531,6 +1594,16 @@ export function MoonGoonsGame() {
       signalsTracked: 0,
       nearestSignalDistance: null,
     });
+    try {
+      const lockRequest = mountRef.current?.requestPointerLock();
+      if (lockRequest) {
+        void lockRequest.catch(() => {
+          // Some browsers require another explicit click on the game view.
+        });
+      }
+    } catch {
+      // The canvas remains clickable if the browser defers pointer lock.
+    }
     sound("launch");
   }, [sound]);
 
@@ -1551,7 +1624,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 007 // 3D SLICE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 008 // CONTROL TEST</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1564,6 +1637,24 @@ export function MoonGoonsGame() {
 
       {snapshot.phase === "active" && (
         <>
+          <div
+            className={`${styles.mouseCapture} ${
+              mouseCaptured ? styles.mouseCaptureActive : ""
+            }`}
+          >
+            <span>{mouseCaptured ? "MOUSE CAPTURED" : "CLICK VIEW TO CAPTURE MOUSE"}</span>
+            <small>{mouseCaptured ? "ESC TO RELEASE" : "ARROW KEYS TURN AS FALLBACK"}</small>
+          </div>
+          <div
+            className={`${styles.crosshair} ${
+              mouseCaptured ? styles.crosshairActive : ""
+            }`}
+            aria-hidden="true"
+          >
+            <i />
+            <i />
+          </div>
+
           <div className={styles.homeReadout}>
             <span className={styles.homePulse} />
             <div>
@@ -1650,7 +1741,11 @@ export function MoonGoonsGame() {
             </div>
             <div>
               <kbd>A / D</kbd>
-              <span>TURN</span>
+              <span>STRAFE</span>
+            </div>
+            <div>
+              <kbd>MOUSE</kbd>
+              <span>LOOK / TURN</span>
             </div>
             <div>
               <kbd>SPACE</kbd>
@@ -1726,7 +1821,7 @@ export function MoonGoonsGame() {
             <button type="button" onClick={resetMission}>
               ACCEPT LIABILITY + ENTER 3D
             </button>
-            <small>Keyboard recommended · Sound begins after deployment</small>
+            <small>Keyboard + mouse recommended · Escape releases the camera</small>
           </div>
         </section>
       )}

@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 007: a real-time 3D Practice Moon vertical slice that proves the core loop and establishes the game’s visual language.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 008: an experimental mouse-look control build of the real-time 3D Practice Moon vertical slice.
 
 ## Playable build
 
@@ -36,8 +36,10 @@ using the public build can review and add to the same development log.
 |---|---|
 | W / Up arrow | Move forward |
 | S / Down arrow | Reverse |
-| A / Left arrow | Turn left |
-| D / Right arrow | Turn right |
+| Mouse | Look and turn |
+| A / D | Strafe left or right |
+| Left / Right arrow | Turn when the mouse is released |
+| Escape | Release the mouse |
 | Space | Moon hop |
 | Q | Scanner pulse |
 | Hold F | Drill |
