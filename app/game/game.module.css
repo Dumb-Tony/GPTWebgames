@@ -203,7 +203,8 @@
 .progressHeader,
 .miniStats,
 .heatLabel,
-.scanStatus {
+.scanStatus,
+.fuelLabel {
   font-family: monospace;
 }
 
@@ -239,7 +240,8 @@
 
 .progressHeader,
 .heatLabel,
-.scanStatus {
+.scanStatus,
+.fuelLabel {
   display: flex;
   justify-content: space-between;
   font-size: 10px;
@@ -250,7 +252,8 @@
 }
 
 .progressTrack,
-.heatTrack {
+.heatTrack,
+.fuelTrack {
   height: 8px;
   margin: 7px 0 10px;
   overflow: hidden;
@@ -327,6 +330,23 @@
 
 .scanStatus strong {
   color: var(--cyan);
+}
+
+.fuelLabel {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+.fuelLabel strong {
+  color: var(--cyan);
+}
+
+.fuelTrack div {
+  height: 100%;
+  background: linear-gradient(90deg, #267d8a, var(--cyan));
+  box-shadow: 0 0 18px rgba(110, 231, 228, 0.45);
+  transition: width 0.12s linear;
 }
 
 .controls {

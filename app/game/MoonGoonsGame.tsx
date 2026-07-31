@@ -50,6 +50,7 @@ type Snapshot = {
   depositsSecured: number;
   prompt: string;
   homeDistance: number;
+  thrusterFuel: number;
 };
 
 const cargoData: Record<CargoKind, CargoDefinition> = {
@@ -418,12 +419,36 @@ function createAstronaut() {
   drill.add(drillLight);
   astronaut.add(drill);
 
+  const thrusterMaterial = new THREE.MeshBasicMaterial({
+    color: palette.cyan,
+    transparent: true,
+    opacity: 0.72,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const thrusterFlames = [-0.42, 0.42].map((x) => {
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(0.22, 1.15, 8, 1, true),
+      thrusterMaterial.clone(),
+    );
+    flame.position.set(x, 1.65, 0.88);
+    flame.rotation.z = Math.PI;
+    flame.scale.setScalar(0.01);
+    astronaut.add(flame);
+    return flame;
+  });
+  const thrusterGlow = new THREE.PointLight(palette.cyan, 0, 7, 2);
+  thrusterGlow.position.set(0, 1.85, 0.92);
+  astronaut.add(thrusterGlow);
+
   astronaut.userData.leftArm = leftArm;
   astronaut.userData.rightArm = rightArm;
   astronaut.userData.leftLeg = leftLeg;
   astronaut.userData.rightLeg = rightLeg;
   astronaut.userData.drill = drill;
   astronaut.userData.visor = visor;
+  astronaut.userData.thrusterFlames = thrusterFlames;
+  astronaut.userData.thrusterGlow = thrusterGlow;
   return astronaut;
 }
 
@@ -666,6 +691,7 @@ export function MoonGoonsGame() {
     depositsSecured: 0,
     prompt: "Q · SCAN FOR VALUABLE MATERIAL",
     homeDistance: 7,
+    thrusterFuel: 100,
   });
 
   const sound = useCallback(
@@ -797,6 +823,7 @@ export function MoonGoonsGame() {
     const velocity = new THREE.Vector3();
     let verticalVelocity = 0;
     let playerHeight = 0;
+    let thrusterFuel = 100;
     let scanAnimation = 0;
     let hudTimer = 0;
     let warningPlayed = false;
@@ -816,6 +843,7 @@ export function MoonGoonsGame() {
       velocity.set(0, 0, 0);
       verticalVelocity = 0;
       playerHeight = 0;
+      thrusterFuel = 100;
       carryingRef.current = null;
       timeRef.current = MISSION_SECONDS;
       scoreRef.current = 0;
@@ -932,6 +960,19 @@ export function MoonGoonsGame() {
             carried?.kind === "platinum" ? JUMP_VELOCITY * 0.72 : JUMP_VELOCITY;
           playerHeight = 0.02;
         }
+        const thrusterActive =
+          keys.has("Space") && playerHeight > 0.38 && thrusterFuel > 0;
+        if (thrusterActive) {
+          const cargoEfficiency =
+            carried?.kind === "platinum" ? 0.58 : carried ? 0.78 : 1;
+          verticalVelocity = Math.min(
+            JUMP_VELOCITY * 1.08,
+            verticalVelocity + 5.2 * cargoEfficiency * dt,
+          );
+          thrusterFuel = Math.max(0, thrusterFuel - 46 * dt);
+        } else if (playerHeight <= 0.01) {
+          thrusterFuel = Math.min(100, thrusterFuel + 31 * dt);
+        }
         if (playerHeight > 0 || verticalVelocity > 0) {
           verticalVelocity -= MOON_GRAVITY * dt;
           playerHeight += verticalVelocity * dt;
@@ -949,6 +990,25 @@ export function MoonGoonsGame() {
           astronaut.position.z *= (MOON_RADIUS - 2) / radius;
         }
         astronaut.position.y = playerHeight;
+
+        const thrusterFlames = astronaut.userData.thrusterFlames as THREE.Mesh[];
+        const thrusterGlow = astronaut.userData.thrusterGlow as THREE.PointLight;
+        thrusterFlames.forEach((flame, index) => {
+          const targetScale = thrusterActive
+            ? 0.82 + Math.sin(now * 0.045 + index * 2.1) * 0.18
+            : 0.01;
+          flame.scale.x = THREE.MathUtils.damp(flame.scale.x, targetScale, 18, dt);
+          flame.scale.y = THREE.MathUtils.damp(flame.scale.y, targetScale, 18, dt);
+          flame.scale.z = THREE.MathUtils.damp(flame.scale.z, targetScale, 18, dt);
+          (flame.material as THREE.MeshBasicMaterial).opacity =
+            0.58 + Math.sin(now * 0.035 + index) * 0.16;
+        });
+        thrusterGlow.intensity = THREE.MathUtils.damp(
+          thrusterGlow.intensity,
+          thrusterActive ? 9 : 0,
+          16,
+          dt,
+        );
 
         const gait = now * 0.009;
         const gaitAmount = moving && playerHeight < 0.05 ? 0.58 : 0.08;
@@ -1229,6 +1289,8 @@ export function MoonGoonsGame() {
           prompt = `SIGNAL AHEAD · ${Math.round(
             nearbySignal.position.distanceTo(astronaut.position),
           )}m`;
+        } else if (playerHeight > 0.4 && thrusterFuel > 0) {
+          prompt = `HOLD SPACE · EVA THRUSTER · ${Math.round(thrusterFuel)}%`;
         }
         setSnapshot({
           phase: phaseRef.current,
@@ -1242,6 +1304,7 @@ export function MoonGoonsGame() {
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
           prompt,
           homeDistance,
+          thrusterFuel,
         });
       }
 
@@ -1287,6 +1350,7 @@ export function MoonGoonsGame() {
       depositsSecured: 0,
       prompt: "Q · SCAN FOR VALUABLE MATERIAL",
       homeDistance: 7,
+      thrusterFuel: 100,
     });
     sound("launch");
   }, [sound]);
@@ -1308,7 +1372,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 005 // 3D SLICE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 006 // 3D SLICE</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1379,6 +1443,13 @@ export function MoonGoonsGame() {
                   : `CHARGING ${snapshot.scanCooldown.toFixed(1)}s`}
               </strong>
             </div>
+            <div className={styles.fuelLabel}>
+              <span>EVA THRUSTER</span>
+              <strong>{Math.round(snapshot.thrusterFuel)}%</strong>
+            </div>
+            <div className={styles.fuelTrack}>
+              <div style={{ width: `${snapshot.thrusterFuel}%` }} />
+            </div>
           </aside>
 
           <div className={styles.controls} aria-label="Game controls">
@@ -1392,7 +1463,7 @@ export function MoonGoonsGame() {
             </div>
             <div>
               <kbd>SPACE</kbd>
-              <span>MOON HOP</span>
+              <span>HOP / HOLD BOOST</span>
             </div>
             <div>
               <kbd>Q</kbd>
