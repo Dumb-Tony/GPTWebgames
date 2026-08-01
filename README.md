@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 009: an experimental mouse-look build with timed lunar pressure-vent hazards.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 010: a reliable mouse-look build with timed lunar pressure-vent hazards.
 
 ## Playable build
 
@@ -37,7 +37,7 @@ using the public build can review and add to the same development log.
 |---|---|
 | W / Up arrow | Move forward |
 | S / Down arrow | Reverse |
-| Mouse | Look and turn |
+| Mouse | Move over the game view to look and turn; click to lock |
 | A / D | Strafe left or right |
 | Left / Right arrow | Turn when the mouse is released |
 | Escape | Release the mouse |

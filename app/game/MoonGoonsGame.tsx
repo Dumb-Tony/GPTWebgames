@@ -789,6 +789,7 @@ function createWorld(scene: THREE.Scene) {
 
 export function MoonGoonsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
+  const pointerTargetRef = useRef<HTMLCanvasElement | null>(null);
   const keysRef = useRef(new Set<string>());
   const phaseRef = useRef<Phase>("briefing");
   const timeRef = useRef(MISSION_SECONDS);
@@ -892,6 +893,7 @@ export function MoonGoonsGame() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
     mount.appendChild(renderer.domElement);
+    pointerTargetRef.current = renderer.domElement;
 
     const hemisphere = new THREE.HemisphereLight(0x8fd9ea, 0x171827, 1.65);
     scene.add(hemisphere);
@@ -1053,7 +1055,7 @@ export function MoonGoonsGame() {
       keysRef.current.delete(event.code);
     };
     const onPointerLockChange = () => {
-      const captured = document.pointerLockElement === mount;
+      const captured = document.pointerLockElement === renderer.domElement;
       mouseCapturedRef.current = captured;
       setMouseCaptured(captured);
       if (!captured) keysRef.current.clear();
@@ -1062,29 +1064,36 @@ export function MoonGoonsGame() {
       if (
         phaseRef.current !== "active" ||
         notesOpenRef.current ||
-        document.pointerLockElement === mount
+        document.pointerLockElement === renderer.domElement
       ) {
         return;
       }
       try {
-        void mount.requestPointerLock().catch(() => {
-          // Some browsers require another explicit click on the game view.
-        });
+        const lockRequest = renderer.domElement.requestPointerLock();
+        if (lockRequest) {
+          void lockRequest.catch(() => {
+            // Mouse-over turning remains available when pointer lock is unavailable.
+          });
+        }
       } catch {
-        // Pointer lock is a desktop enhancement; keyboard play remains available.
+        // Mouse-over turning remains available when pointer lock is unavailable.
       }
     };
     const onMouseMove = (event: MouseEvent) => {
+      const locked = document.pointerLockElement === renderer.domElement;
+      const overCanvas = event.target === renderer.domElement;
       if (
-        document.pointerLockElement !== mount ||
+        (!locked && !overCanvas) ||
         phaseRef.current !== "active" ||
         notesOpenRef.current
       ) {
         return;
       }
-      astronaut.rotation.y -= event.movementX * 0.00235;
+      const deltaX = THREE.MathUtils.clamp(event.movementX, -45, 45);
+      const deltaY = THREE.MathUtils.clamp(event.movementY, -35, 35);
+      astronaut.rotation.y -= deltaX * 0.00235;
       cameraPitch = THREE.MathUtils.clamp(
-        cameraPitch - event.movementY * 0.0019,
+        cameraPitch - deltaY * 0.0019,
         -0.28,
         0.34,
       );
@@ -1513,7 +1522,10 @@ export function MoonGoonsGame() {
         }
       }
 
-      if (phaseRef.current !== "active" && document.pointerLockElement === mount) {
+      if (
+        phaseRef.current !== "active" &&
+        document.pointerLockElement === renderer.domElement
+      ) {
         document.exitPointerLock();
       }
 
@@ -1696,7 +1708,8 @@ export function MoonGoonsGame() {
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       document.removeEventListener("mousemove", onMouseMove);
       mount.removeEventListener("click", requestMouseCapture);
-      if (document.pointerLockElement === mount) document.exitPointerLock();
+      if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
+      pointerTargetRef.current = null;
       resetRuntimeRef.current = null;
       scene.traverse((object) => {
         if (
@@ -1739,10 +1752,10 @@ export function MoonGoonsGame() {
       nearestSignalDistance: null,
     });
     try {
-      const lockRequest = mountRef.current?.requestPointerLock();
+      const lockRequest = pointerTargetRef.current?.requestPointerLock();
       if (lockRequest) {
         void lockRequest.catch(() => {
-          // Some browsers require another explicit click on the game view.
+          // Mouse-over turning remains available when pointer lock is unavailable.
         });
       }
     } catch {
@@ -1768,7 +1781,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 009 // VENT TEST</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 010 // MOUSE FIX</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1786,8 +1799,8 @@ export function MoonGoonsGame() {
               mouseCaptured ? styles.mouseCaptureActive : ""
             }`}
           >
-            <span>{mouseCaptured ? "MOUSE CAPTURED" : "CLICK VIEW TO CAPTURE MOUSE"}</span>
-            <small>{mouseCaptured ? "ESC TO RELEASE" : "ARROW KEYS TURN AS FALLBACK"}</small>
+            <span>{mouseCaptured ? "MOUSE CAPTURED" : "MOVE MOUSE TO TURN"}</span>
+            <small>{mouseCaptured ? "ESC TO RELEASE" : "CLICK VIEW TO LOCK · ARROWS ALSO TURN"}</small>
           </div>
           <div
             className={`${styles.crosshair} ${
