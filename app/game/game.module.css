@@ -48,6 +48,10 @@
   height: 100%;
 }
 
+.mouseLocked canvas {
+  cursor: none;
+}
+
 .topbar {
   position: absolute;
   z-index: 4;

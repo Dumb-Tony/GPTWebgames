@@ -14,6 +14,7 @@ const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
 const SHIP_POSITION = new THREE.Vector3(-19, 0, 5);
 
 type Phase = "briefing" | "active" | "success" | "failed";
+type MouseLockIssue = "unsupported" | "blocked" | null;
 type CargoKind = "ferric" | "glass" | "platinum";
 type DepositState = "hidden" | "revealed" | "extracting" | "cargo" | "secured";
 
@@ -806,6 +807,7 @@ export function MoonGoonsGame() {
   const resetRuntimeRef = useRef<(() => void) | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
   const [mouseCaptured, setMouseCaptured] = useState(false);
+  const [mouseLockIssue, setMouseLockIssue] = useState<MouseLockIssue>(null);
   const [snapshot, setSnapshot] = useState<Snapshot>({
     phase: "briefing",
     time: MISSION_SECONDS,
@@ -870,6 +872,30 @@ export function MoonGoonsGame() {
     setNotesOpen(open);
   }, []);
 
+  const requestMouseLock = useCallback(() => {
+    if (phaseRef.current !== "active" || notesOpenRef.current) return;
+
+    const target = pointerTargetRef.current;
+    if (
+      !target ||
+      typeof target.requestPointerLock !== "function" ||
+      typeof document.exitPointerLock !== "function"
+    ) {
+      setMouseLockIssue("unsupported");
+      return;
+    }
+
+    target.focus({ preventScroll: true });
+    try {
+      const lockRequest = target.requestPointerLock();
+      if (lockRequest) {
+        void lockRequest.catch(() => setMouseLockIssue("blocked"));
+      }
+    } catch {
+      setMouseLockIssue("blocked");
+    }
+  }, []);
+
   useEffect(() => {
     const mount = mountRef.current;
     if (!mount) return;
@@ -893,6 +919,7 @@ export function MoonGoonsGame() {
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
     mount.appendChild(renderer.domElement);
+    renderer.domElement.tabIndex = 0;
     pointerTargetRef.current = renderer.domElement;
 
     const hemisphere = new THREE.HemisphereLight(0x8fd9ea, 0x171827, 1.65);
@@ -1058,32 +1085,15 @@ export function MoonGoonsGame() {
       const captured = document.pointerLockElement === renderer.domElement;
       mouseCapturedRef.current = captured;
       setMouseCaptured(captured);
+      if (captured) setMouseLockIssue(null);
       if (!captured) keysRef.current.clear();
     };
-    const requestMouseCapture = () => {
-      if (
-        phaseRef.current !== "active" ||
-        notesOpenRef.current ||
-        document.pointerLockElement === renderer.domElement
-      ) {
-        return;
-      }
-      try {
-        const lockRequest = renderer.domElement.requestPointerLock();
-        if (lockRequest) {
-          void lockRequest.catch(() => {
-            // Mouse-over turning remains available when pointer lock is unavailable.
-          });
-        }
-      } catch {
-        // Mouse-over turning remains available when pointer lock is unavailable.
-      }
+    const onPointerLockError = () => {
+      setMouseLockIssue("blocked");
     };
     const onMouseMove = (event: MouseEvent) => {
-      const locked = document.pointerLockElement === renderer.domElement;
-      const overCanvas = event.target === renderer.domElement;
       if (
-        (!locked && !overCanvas) ||
+        document.pointerLockElement !== renderer.domElement ||
         phaseRef.current !== "active" ||
         notesOpenRef.current
       ) {
@@ -1101,8 +1111,9 @@ export function MoonGoonsGame() {
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
+    document.addEventListener("pointerlockerror", onPointerLockError);
     document.addEventListener("mousemove", onMouseMove);
-    mount.addEventListener("click", requestMouseCapture);
+    mount.addEventListener("click", requestMouseLock);
 
     const updateDrillBeam = (start: THREE.Vector3, end: THREE.Vector3) => {
       const midpoint = start.clone().add(end).multiplyScalar(0.5);
@@ -1706,8 +1717,9 @@ export function MoonGoonsGame() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       document.removeEventListener("pointerlockchange", onPointerLockChange);
+      document.removeEventListener("pointerlockerror", onPointerLockError);
       document.removeEventListener("mousemove", onMouseMove);
-      mount.removeEventListener("click", requestMouseCapture);
+      mount.removeEventListener("click", requestMouseLock);
       if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       pointerTargetRef.current = null;
       resetRuntimeRef.current = null;
@@ -1727,7 +1739,7 @@ export function MoonGoonsGame() {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [sound]);
+  }, [requestMouseLock, sound]);
 
   const resetMission = useCallback(() => {
     resetRuntimeRef.current?.();
@@ -1751,18 +1763,9 @@ export function MoonGoonsGame() {
       signalsTracked: 0,
       nearestSignalDistance: null,
     });
-    try {
-      const lockRequest = pointerTargetRef.current?.requestPointerLock();
-      if (lockRequest) {
-        void lockRequest.catch(() => {
-          // Mouse-over turning remains available when pointer lock is unavailable.
-        });
-      }
-    } catch {
-      // The canvas remains clickable if the browser defers pointer lock.
-    }
+    requestMouseLock();
     sound("launch");
-  }, [sound]);
+  }, [requestMouseLock, sound]);
 
   const percent = Math.min(100, (snapshot.score / CONTRACT_TARGET) * 100);
   const urgent = snapshot.phase === "active" && snapshot.time <= 30;
@@ -1771,7 +1774,7 @@ export function MoonGoonsGame() {
     <main className={styles.shell}>
       <div
         ref={mountRef}
-        className={styles.canvas}
+        className={`${styles.canvas} ${mouseCaptured ? styles.mouseLocked : ""}`}
         role="img"
         aria-label="Playable third-person 3D Practice Moon extraction mission"
       />
@@ -1781,7 +1784,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 010 // MOUSE FIX</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 011 // TRUE MOUSE LOCK</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1799,8 +1802,22 @@ export function MoonGoonsGame() {
               mouseCaptured ? styles.mouseCaptureActive : ""
             }`}
           >
-            <span>{mouseCaptured ? "MOUSE CAPTURED" : "MOVE MOUSE TO TURN"}</span>
-            <small>{mouseCaptured ? "ESC TO RELEASE" : "CLICK VIEW TO LOCK · ARROWS ALSO TURN"}</small>
+            <span>
+              {mouseCaptured
+                ? "MOUSE LOCKED TO CENTER"
+                : mouseLockIssue === "unsupported"
+                  ? "MOUSE LOCK UNAVAILABLE IN THIS PREVIEW"
+                  : mouseLockIssue === "blocked"
+                    ? "MOUSE LOCK BLOCKED · CLICK VIEW TO RETRY"
+                    : "CLICK VIEW TO LOCK MOUSE"}
+            </span>
+            <small>
+              {mouseCaptured
+                ? "ESC TO RELEASE"
+                : mouseLockIssue === "unsupported"
+                  ? "OPEN THIS PUBLIC LINK IN CHROME OR EDGE"
+                  : "CENTERED MOUSE CAPTURE IS REQUIRED FOR TURNING"}
+            </small>
           </div>
           <div
             className={`${styles.crosshair} ${
