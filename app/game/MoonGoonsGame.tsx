@@ -1808,14 +1808,14 @@ export function MoonGoonsGame() {
                 : mouseLockIssue === "unsupported"
                   ? "MOUSE LOCK UNAVAILABLE IN THIS PREVIEW"
                   : mouseLockIssue === "blocked"
-                    ? "MOUSE LOCK BLOCKED · CLICK VIEW TO RETRY"
+                    ? "MOUSE LOCK BLOCKED BY THIS BROWSER"
                     : "CLICK VIEW TO LOCK MOUSE"}
             </span>
             <small>
               {mouseCaptured
                 ? "ESC TO RELEASE"
-                : mouseLockIssue === "unsupported"
-                  ? "OPEN THIS PUBLIC LINK IN CHROME OR EDGE"
+                : mouseLockIssue === "unsupported" || mouseLockIssue === "blocked"
+                  ? "OPEN THE PUBLIC LINK IN CHROME OR EDGE OUTSIDE CODEX"
                   : "CENTERED MOUSE CAPTURE IS REQUIRED FOR TURNING"}
             </small>
           </div>
