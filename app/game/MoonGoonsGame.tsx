@@ -643,6 +643,69 @@ function createMeteorStreaks() {
   return streaks;
 }
 
+function createPressureVents() {
+  const positions: Array<[number, number]> = [
+    [-4, 18],
+    [16, 3],
+    [29, -18],
+  ];
+  return positions.map(([x, z], index) => {
+    const vent = new THREE.Group();
+    vent.position.set(x, 0.08, z);
+
+    const base = cylinder(1.35, 1.6, 0.42, palette.graphite, [0, 0.2, 0], 12, {
+      metalness: 0.34,
+      roughness: 0.7,
+    });
+    vent.add(base);
+    const nozzle = cylinder(0.5, 0.78, 0.72, 0x6d706f, [0, 0.68, 0], 10, {
+      metalness: 0.46,
+    });
+    vent.add(nozzle);
+
+    const warningRing = new THREE.Mesh(
+      new THREE.TorusGeometry(2.25, 0.065, 8, 48),
+      new THREE.MeshBasicMaterial({
+        color: palette.cyan,
+        transparent: true,
+        opacity: 0.24,
+        depthWrite: false,
+      }),
+    );
+    warningRing.rotation.x = Math.PI / 2;
+    warningRing.position.y = 0.08;
+    vent.add(warningRing);
+
+    const plume = new THREE.Mesh(
+      new THREE.ConeGeometry(1.3, 7.5, 14, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: palette.cyan,
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      }),
+    );
+    plume.position.y = 4.35;
+    plume.scale.set(0.08, 0.08, 0.08);
+    vent.add(plume);
+
+    const light = new THREE.PointLight(palette.cyan, 0.8, 9, 2);
+    light.position.y = 1.2;
+    vent.add(light);
+
+    vent.userData.offset = index * 2.7;
+    vent.userData.erupting = false;
+    vent.userData.warning = false;
+    vent.userData.lastLaunchCycle = -1;
+    vent.userData.warningRing = warningRing;
+    vent.userData.plume = plume;
+    vent.userData.light = light;
+    return vent;
+  });
+}
+
 function createCrater(x: number, z: number, radius: number) {
   const crater = new THREE.Group();
   crater.position.set(x, 0.03, z);
@@ -692,9 +755,11 @@ function createWorld(scene: THREE.Scene) {
   const ship = createShip();
   const rover = createRover();
   const meteorStreaks = createMeteorStreaks();
+  const pressureVents = createPressureVents();
   scene.add(ship);
   scene.add(rover);
   scene.add(meteorStreaks);
+  pressureVents.forEach((vent) => scene.add(vent));
 
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(7, 28, 20),
@@ -719,7 +784,7 @@ function createWorld(scene: THREE.Scene) {
   earthCloud.position.copy(earth.position);
   scene.add(earthCloud);
 
-  return { ship, rover, earth, earthCloud, meteorStreaks };
+  return { ship, rover, earth, earthCloud, meteorStreaks, pressureVents };
 }
 
 export function MoonGoonsGame() {
@@ -954,6 +1019,9 @@ export function MoonGoonsGame() {
         burst.age = 1;
         burst.mesh.visible = false;
       });
+      world.pressureVents.forEach((vent) => {
+        vent.userData.lastLaunchCycle = -1;
+      });
       resetDeposits();
     };
 
@@ -1046,6 +1114,46 @@ export function MoonGoonsGame() {
       const keys = keysRef.current;
       const phase = phaseRef.current;
 
+      world.pressureVents.forEach((vent, index) => {
+        const total = now * 0.001 + (vent.userData.offset as number);
+        const cycleTime = total % 9;
+        const cycle = Math.floor(total / 9);
+        const warning = cycleTime >= 6.15 && cycleTime < 7.25;
+        const erupting = cycleTime >= 7.25 && cycleTime < 8.55;
+        vent.userData.warning = warning;
+        vent.userData.erupting = erupting;
+        vent.userData.cycle = cycle;
+
+        const warningRing = vent.userData.warningRing as THREE.Mesh;
+        const ringMaterial = warningRing.material as THREE.MeshBasicMaterial;
+        const ringPulse = 1 + Math.sin(now * 0.014 + index) * 0.16;
+        warningRing.scale.setScalar(warning || erupting ? ringPulse * 1.2 : ringPulse);
+        ringMaterial.color.setHex(warning || erupting ? palette.coral : palette.cyan);
+        ringMaterial.opacity = erupting ? 0.72 : warning ? 0.5 : 0.2;
+
+        const plume = vent.userData.plume as THREE.Mesh;
+        const plumeMaterial = plume.material as THREE.MeshBasicMaterial;
+        const plumeScale = erupting
+          ? 0.82 + Math.sin(now * 0.042 + index) * 0.16
+          : warning
+            ? 0.13
+            : 0.04;
+        plume.scale.x = THREE.MathUtils.damp(plume.scale.x, plumeScale, 14, dt);
+        plume.scale.y = THREE.MathUtils.damp(
+          plume.scale.y,
+          erupting ? 0.95 + Math.sin(now * 0.035) * 0.12 : plumeScale,
+          14,
+          dt,
+        );
+        plume.scale.z = THREE.MathUtils.damp(plume.scale.z, plumeScale, 14, dt);
+        plumeMaterial.opacity = erupting ? 0.4 : warning ? 0.08 : 0;
+        (vent.userData.light as THREE.PointLight).intensity = erupting
+          ? 11 + Math.sin(now * 0.04) * 3
+          : warning
+            ? 3
+            : 0.65;
+      });
+
       if (phase === "active" && !notesOpenRef.current) {
         timeRef.current = Math.max(0, timeRef.current - dt);
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
@@ -1057,6 +1165,31 @@ export function MoonGoonsGame() {
         }
 
         const carried = deposits.find((deposit) => deposit.id === carryingRef.current);
+        world.pressureVents.forEach((vent) => {
+          const distance = vent.position.distanceTo(astronaut.position);
+          const cycle = vent.userData.cycle as number;
+          if (
+            vent.userData.erupting &&
+            distance < 3.25 &&
+            playerHeight < 1.25 &&
+            vent.userData.lastLaunchCycle !== cycle
+          ) {
+            vent.userData.lastLaunchCycle = cycle;
+            verticalVelocity = Math.max(verticalVelocity, carried ? 7.1 : 9.3);
+            playerHeight = Math.max(playerHeight, 0.18);
+            cameraImpact = Math.max(cameraImpact, 1.55);
+            emitDustBurst(astronaut.position, 1.7);
+            if (carried) {
+              const hazardDamage =
+                carried.kind === "glass" ? 0.22 : carried.kind === "ferric" ? 0.08 : 0.035;
+              carried.condition = Math.max(0.42, carried.condition - hazardDamage);
+            }
+            messageRef.current = carried
+              ? `PRESSURE VENT! Crew and ${cargoData[carried.kind].name} launched together. Condition ${Math.round(carried.condition * 100)}%.`
+              : "PRESSURE VENT! Congratulations on the unscheduled field launch.";
+            sound("warning");
+          }
+        });
         const speedFactor = carried ? cargoData[carried.kind].speed : 1;
         const driveInput =
           (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
@@ -1518,6 +1651,17 @@ export function MoonGoonsGame() {
         } else if (playerHeight > 0.4 && thrusterFuel > 0) {
           prompt = `HOLD SPACE · EVA THRUSTER · ${Math.round(thrusterFuel)}%`;
         }
+        const nearestVent = [...world.pressureVents].sort(
+          (a, b) =>
+            a.position.distanceTo(astronaut.position) -
+            b.position.distanceTo(astronaut.position),
+        )[0];
+        const ventDistance = nearestVent.position.distanceTo(astronaut.position);
+        if (ventDistance < 6 && nearestVent.userData.erupting) {
+          prompt = "PRESSURE VENT ERUPTING · USE THRUSTER TO CLEAR";
+        } else if (ventDistance < 6 && nearestVent.userData.warning) {
+          prompt = `VENT PRESSURE RISING · ${Math.round(ventDistance)}m`;
+        }
         setSnapshot({
           phase: phaseRef.current,
           time: timeRef.current,
@@ -1624,7 +1768,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 008 // CONTROL TEST</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 009 // VENT TEST</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1799,7 +1943,8 @@ export function MoonGoonsGame() {
             </h1>
             <p className={styles.lede}>
               Explore a fully 3D Practice Moon, find buried material, manage your drill,
-              and haul ¢{CONTRACT_TARGET} back to the warm yellow lights of the ship.
+              dodge unstable pressure vents, and haul ¢{CONTRACT_TARGET} back to the
+              warm yellow lights of the ship.
             </p>
             <div className={styles.briefGrid}>
               <div>
@@ -1814,8 +1959,8 @@ export function MoonGoonsGame() {
               </div>
               <div>
                 <span>03</span>
-                <strong>ESCAPE</strong>
-                <p>Grab cargo with E and follow the ship’s warm landing lights home.</p>
+                <strong>SURVIVE</strong>
+                <p>Watch for coral warning rings. Vents launch crew and damage cargo.</p>
               </div>
             </div>
             <button type="button" onClick={resetMission}>
