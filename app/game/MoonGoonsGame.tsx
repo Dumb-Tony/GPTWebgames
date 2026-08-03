@@ -10,6 +10,7 @@ const MISSION_SECONDS = 180;
 const MOON_RADIUS = 48;
 const MOON_GRAVITY = 4.35;
 const JUMP_VELOCITY = 6.1;
+const DRILL_JAM_WEAR = 100;
 const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
 const SHIP_POSITION = new THREE.Vector3(-19, 0, 5);
 
@@ -45,6 +46,10 @@ type Snapshot = {
   score: number;
   heat: number;
   overheated: boolean;
+  drillWear: number;
+  drillJammed: boolean;
+  repairProgress: number;
+  repairsCompleted: number;
   carrying: string | null;
   cargoCondition: number | null;
   message: string;
@@ -450,6 +455,7 @@ function createAstronaut() {
   astronaut.userData.leftLeg = leftLeg;
   astronaut.userData.rightLeg = rightLeg;
   astronaut.userData.drill = drill;
+  astronaut.userData.drillLight = drillLight;
   astronaut.userData.visor = visor;
   astronaut.userData.thrusterFlames = thrusterFlames;
   astronaut.userData.thrusterGlow = thrusterGlow;
@@ -797,11 +803,16 @@ export function MoonGoonsGame() {
   const scoreRef = useRef(0);
   const heatRef = useRef(0);
   const overheatedRef = useRef(false);
+  const drillWearRef = useRef(0);
+  const drillJammedRef = useRef(false);
+  const repairProgressRef = useRef(0);
+  const repairsCompletedRef = useRef(0);
   const scanCooldownRef = useRef(0);
   const messageRef = useRef(INITIAL_MESSAGE);
   const carryingRef = useRef<number | null>(null);
   const interactLatchRef = useRef(false);
   const scanLatchRef = useRef(false);
+  const repairLatchRef = useRef(false);
   const notesOpenRef = useRef(false);
   const mouseCapturedRef = useRef(false);
   const resetRuntimeRef = useRef<(() => void) | null>(null);
@@ -814,6 +825,10 @@ export function MoonGoonsGame() {
     score: 0,
     heat: 0,
     overheated: false,
+    drillWear: 0,
+    drillJammed: false,
+    repairProgress: 0,
+    repairsCompleted: 0,
     carrying: null,
     cargoCondition: null,
     message: INITIAL_MESSAGE,
@@ -827,7 +842,16 @@ export function MoonGoonsGame() {
   });
 
   const sound = useCallback(
-    (tone: "scan" | "pickup" | "secure" | "warning" | "launch" | "step") => {
+    (
+      tone:
+        | "scan"
+        | "pickup"
+        | "secure"
+        | "warning"
+        | "launch"
+        | "step"
+        | "repair",
+    ) => {
       try {
         const AudioContextClass =
           window.AudioContext ||
@@ -845,11 +869,20 @@ export function MoonGoonsGame() {
           warning: [170, 115, 0.24],
           launch: [105, 340, 0.52],
           step: [92, 72, 0.055],
+          repair: [125, 540, 0.14],
         }[tone];
-        oscillator.type = tone === "warning" ? "square" : tone === "step" ? "triangle" : "sine";
+        oscillator.type =
+          tone === "warning" || tone === "repair"
+            ? "square"
+            : tone === "step"
+              ? "triangle"
+              : "sine";
         oscillator.frequency.setValueAtTime(settings[0], now);
         oscillator.frequency.exponentialRampToValueAtTime(settings[1], now + settings[2]);
-        gain.gain.setValueAtTime(tone === "step" ? 0.018 : 0.05, now);
+        gain.gain.setValueAtTime(
+          tone === "step" ? 0.018 : tone === "repair" ? 0.042 : 0.05,
+          now,
+        );
         gain.gain.exponentialRampToValueAtTime(0.001, now + settings[2]);
         oscillator.connect(gain);
         gain.connect(context.destination);
@@ -1019,6 +1052,7 @@ export function MoonGoonsGame() {
     let stepTimer = 0;
     let cameraImpact = 0;
     let cameraPitch = 0;
+    let repairKick = 0;
     let animationFrame = 0;
     let previous = performance.now();
 
@@ -1040,10 +1074,16 @@ export function MoonGoonsGame() {
       scoreRef.current = 0;
       heatRef.current = 0;
       overheatedRef.current = false;
+      drillWearRef.current = 0;
+      drillJammedRef.current = false;
+      repairProgressRef.current = 0;
+      repairsCompletedRef.current = 0;
+      repairLatchRef.current = false;
       scanCooldownRef.current = 0;
       warningPlayed = false;
       cameraImpact = 0;
       cameraPitch = 0;
+      repairKick = 0;
       dustBursts.forEach((burst) => {
         burst.age = 1;
         burst.mesh.visible = false;
@@ -1410,13 +1450,70 @@ export function MoonGoonsGame() {
           nearestDrillable.position.distanceTo(astronaut.position) < 3 &&
           carryingRef.current === null &&
           playerHeight < 0.15 &&
-          !overheatedRef.current;
+          !overheatedRef.current &&
+          !drillJammedRef.current;
 
         const drill = astronaut.userData.drill as THREE.Group;
+        const drillLight = astronaut.userData.drillLight as THREE.Mesh;
+        const drillLightMaterial = drillLight.material as THREE.MeshStandardMaterial;
+        const repairPressed = keys.has("KeyR");
+        if (
+          repairPressed &&
+          !repairLatchRef.current &&
+          drillJammedRef.current
+        ) {
+          repairProgressRef.current = Math.min(100, repairProgressRef.current + 34);
+          repairKick = 1;
+          drill.rotation.y += 0.72;
+          cameraImpact = Math.max(cameraImpact, 0.22);
+          sound("repair");
+          if (repairProgressRef.current >= 100) {
+            drillJammedRef.current = false;
+            drillWearRef.current = 18;
+            repairProgressRef.current = 0;
+            repairsCompletedRef.current += 1;
+            messageRef.current =
+              "Percussive maintenance successful. The drill has agreed to continue.";
+          } else {
+            const hitsRemaining = Math.ceil(
+              (100 - repairProgressRef.current) / 34,
+            );
+            messageRef.current = `REPAIR STRIKE REGISTERED. ${hitsRemaining} hit${
+              hitsRemaining === 1 ? "" : "s"
+            } remaining.`;
+          }
+        }
+        repairLatchRef.current = repairPressed;
+        repairKick = Math.max(0, repairKick - dt * 4.6);
+        drill.rotation.z = THREE.MathUtils.damp(
+          drill.rotation.z,
+          drillJammedRef.current
+            ? Math.sin(now * 0.04) * 0.045 + repairKick * 0.18
+            : 0,
+          18,
+          dt,
+        );
+        const jamLightOn = Math.sin(now * 0.028) > -0.15;
+        drillLightMaterial.color.setHex(
+          drillJammedRef.current ? palette.red : palette.cyan,
+        );
+        drillLightMaterial.emissive.setHex(
+          drillJammedRef.current ? palette.red : palette.cyan,
+        );
+        drillLightMaterial.emissiveIntensity = drillJammedRef.current
+          ? jamLightOn
+            ? 5.5
+            : 0.25
+          : 2.6;
+
         if (drilling && nearestDrillable) {
           nearestDrillable.state = "extracting";
           nearestDrillable.progress += dt * (heatRef.current > 72 ? 15 : 23);
-          heatRef.current += dt * 33;
+          drillWearRef.current = Math.min(
+            DRILL_JAM_WEAR,
+            drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
+          );
+          heatRef.current = Math.min(100, heatRef.current + dt * 33);
           drill.rotation.y += dt * 34;
           drill.position.y = 2.7 + Math.sin(now * 0.07) * 0.045;
           const start = new THREE.Vector3();
@@ -1437,7 +1534,15 @@ export function MoonGoonsGame() {
             messageRef.current = `${cargoData[nearestDrillable.kind].name} extracted. It is now a logistics problem.`;
             sound("pickup");
           }
-          if (heatRef.current >= 100) {
+          if (drillWearRef.current >= DRILL_JAM_WEAR) {
+            drillJammedRef.current = true;
+            repairProgressRef.current = 0;
+            drillBeam.visible = false;
+            drillGlow.intensity = 0;
+            messageRef.current =
+              "DRILL JAMMED. TAP R THREE TIMES FOR APPROVED PERCUSSIVE MAINTENANCE.";
+            sound("warning");
+          } else if (heatRef.current >= 100) {
             heatRef.current = 100;
             overheatedRef.current = true;
             drillBeam.visible = false;
@@ -1451,7 +1556,9 @@ export function MoonGoonsGame() {
           heatRef.current = Math.max(0, heatRef.current - dt * 25);
           if (overheatedRef.current && heatRef.current <= 34) {
             overheatedRef.current = false;
-            messageRef.current = "Drill grudgingly operational.";
+            if (!drillJammedRef.current) {
+              messageRef.current = "Drill grudgingly operational.";
+            }
           }
         }
 
@@ -1674,6 +1781,14 @@ export function MoonGoonsGame() {
         } else if (playerHeight > 0.4 && thrusterFuel > 0) {
           prompt = `HOLD SPACE · EVA THRUSTER · ${Math.round(thrusterFuel)}%`;
         }
+        if (drillJammedRef.current) {
+          const repairHitsRemaining = Math.ceil(
+            (100 - repairProgressRef.current) / 34,
+          );
+          prompt = `TAP R · PERCUSSIVE REPAIR · ${repairHitsRemaining} HIT${
+            repairHitsRemaining === 1 ? "" : "S"
+          }`;
+        }
         const nearestVent = [...world.pressureVents].sort(
           (a, b) =>
             a.position.distanceTo(astronaut.position) -
@@ -1691,6 +1806,10 @@ export function MoonGoonsGame() {
           score: scoreRef.current,
           heat: heatRef.current,
           overheated: overheatedRef.current,
+          drillWear: drillWearRef.current,
+          drillJammed: drillJammedRef.current,
+          repairProgress: repairProgressRef.current,
+          repairsCompleted: repairsCompletedRef.current,
           carrying: held ? cargoData[held.kind].name : null,
           cargoCondition: held ? held.condition : null,
           message: messageRef.current,
@@ -1752,6 +1871,10 @@ export function MoonGoonsGame() {
       score: 0,
       heat: 0,
       overheated: false,
+      drillWear: 0,
+      drillJammed: false,
+      repairProgress: 0,
+      repairsCompleted: 0,
       carrying: null,
       cargoCondition: null,
       message: messageRef.current,
@@ -1784,7 +1907,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 011 // TRUE MOUSE LOCK</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 012 // FAILURE + RECOVERY</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1869,7 +1992,11 @@ export function MoonGoonsGame() {
               <div>
                 <strong>ISSUE DRILL</strong>
                 <small>
-                  {snapshot.overheated ? "THERMAL LOCKOUT" : "QUESTIONABLY OPERATIONAL"}
+                  {snapshot.drillJammed
+                    ? "MECHANICAL JAM // R TO REPAIR"
+                    : snapshot.overheated
+                      ? "THERMAL LOCKOUT"
+                      : "QUESTIONABLY OPERATIONAL"}
                 </small>
               </div>
             </div>
@@ -1881,6 +2008,26 @@ export function MoonGoonsGame() {
               <div
                 className={snapshot.overheated ? styles.heatDanger : ""}
                 style={{ width: `${snapshot.heat}%` }}
+              />
+            </div>
+            <div className={styles.integrityLabel}>
+              <span>{snapshot.drillJammed ? "PERCUSSIVE REPAIR" : "DRIVE CONDITION"}</span>
+              <strong>
+                {snapshot.drillJammed
+                  ? `${Math.round(snapshot.repairProgress)}%`
+                  : `${Math.round(100 - snapshot.drillWear)}%`}
+              </strong>
+            </div>
+            <div className={styles.integrityTrack}>
+              <div
+                className={snapshot.drillJammed ? styles.integrityDanger : ""}
+                style={{
+                  width: `${
+                    snapshot.drillJammed
+                      ? snapshot.repairProgress
+                      : 100 - snapshot.drillWear
+                  }%`,
+                }}
               />
             </div>
             <div className={styles.scanStatus}>
@@ -1934,6 +2081,10 @@ export function MoonGoonsGame() {
               <span>HOLD TO DRILL</span>
             </div>
             <div>
+              <kbd>R</kbd>
+              <span>REPAIR JAM</span>
+            </div>
+            <div>
               <kbd>E</kbd>
               <span>GRAB / DEPOSIT</span>
             </div>
@@ -1985,7 +2136,7 @@ export function MoonGoonsGame() {
               <div>
                 <span>02</span>
                 <strong>EXTRACT</strong>
-                <p>Hold F beside a signal. The modeled drill will object thermally.</p>
+                <p>Hold F beside a signal. If the drill jams, tap R three times.</p>
               </div>
               <div>
                 <span>03</span>
@@ -2024,8 +2175,8 @@ export function MoonGoonsGame() {
                 <strong>{snapshot.depositsSecured}</strong>
               </div>
               <div>
-                <span>DRILL HEAT</span>
-                <strong>{Math.round(snapshot.heat)}%</strong>
+                <span>FIELD REPAIRS</span>
+                <strong>{snapshot.repairsCompleted}</strong>
               </div>
               <div>
                 <span>SAFETY RATING</span>

@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 011: true centered pointer-lock controls with timed lunar pressure-vent hazards.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 012: true centered pointer-lock controls, timed lunar hazards, and recoverable drill failures.
 
 ## Playable build
 
@@ -16,6 +16,7 @@ The first prototype includes:
 - Hidden deposits revealed by scanner pulses
 - Scanner telemetry for tracked contacts and nearest-signal distance
 - A drill with heat, efficiency loss, and thermal lockout
+- Mechanical drill wear, visible jams, and three-strike field repairs
 - Light, fragile, and heavy cargo
 - Cargo condition and value loss from reckless airborne or high-speed drops
 - Timed pressure vents with readable warnings, launch force, and cargo damage
@@ -44,6 +45,7 @@ using the public build can review and add to the same development log.
 | Space | Moon hop |
 | Q | Scanner pulse |
 | Hold F | Drill |
+| R | Repair a jammed drill |
 | E | Grab, deposit, or launch |
 
 ## Development

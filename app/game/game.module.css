@@ -275,6 +275,7 @@
 .progressHeader,
 .miniStats,
 .heatLabel,
+.integrityLabel,
 .scanStatus,
 .fuelLabel,
 .signalTelemetry {
@@ -327,6 +328,7 @@
 
 .progressTrack,
 .heatTrack,
+.integrityTrack,
 .fuelTrack {
   height: 8px;
   margin: 7px 0 10px;
@@ -394,6 +396,32 @@
 .heatTrack .heatDanger {
   background: var(--red);
   box-shadow: 0 0 24px rgba(255, 97, 111, 0.8);
+}
+
+.integrityLabel {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
+.integrityLabel strong {
+  color: var(--green);
+}
+
+.integrityTrack div {
+  height: 100%;
+  background: linear-gradient(90deg, #3a8a61, var(--green));
+  box-shadow: 0 0 16px rgba(142, 224, 125, 0.35);
+  transition: width 0.12s linear;
+}
+
+.integrityTrack .integrityDanger {
+  background: linear-gradient(90deg, var(--orange), var(--red));
+  box-shadow: 0 0 24px rgba(255, 97, 111, 0.65);
 }
 
 .scanStatus {
