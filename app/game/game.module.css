@@ -276,6 +276,7 @@
 .miniStats,
 .heatLabel,
 .integrityLabel,
+.suitLabel,
 .scanStatus,
 .fuelLabel,
 .signalTelemetry {
@@ -329,6 +330,7 @@
 .progressTrack,
 .heatTrack,
 .integrityTrack,
+.suitTrack,
 .fuelTrack {
   height: 8px;
   margin: 7px 0 10px;
@@ -422,6 +424,38 @@
 .integrityTrack .integrityDanger {
   background: linear-gradient(90deg, var(--orange), var(--red));
   box-shadow: 0 0 24px rgba(255, 97, 111, 0.65);
+}
+
+.suitLabel {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 10px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+  letter-spacing: 0.05em;
+}
+
+.suitLabel strong {
+  color: var(--cyan);
+}
+
+.suitTrack div {
+  height: 100%;
+  background: linear-gradient(90deg, #267d8a, var(--cyan));
+  box-shadow: 0 0 16px rgba(110, 231, 228, 0.35);
+  transition: width 0.12s linear;
+}
+
+.suitTrack .suitDanger {
+  background: linear-gradient(90deg, var(--orange), var(--red));
+  box-shadow: 0 0 24px rgba(255, 97, 111, 0.7);
+}
+
+.stormActive {
+  color: var(--red);
+  font-weight: 800;
+  animation: warningPulse 0.8s steps(2, end) infinite;
 }
 
 .scanStatus {

@@ -11,6 +11,7 @@ const MOON_RADIUS = 48;
 const MOON_GRAVITY = 4.35;
 const JUMP_VELOCITY = 6.1;
 const DRILL_JAM_WEAR = 100;
+const INITIAL_MISSION_SEED = 12013;
 const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
 const SHIP_POSITION = new THREE.Vector3(-19, 0, 5);
 
@@ -18,6 +19,13 @@ type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
 type CargoKind = "ferric" | "glass" | "platinum";
 type DepositState = "hidden" | "revealed" | "extracting" | "cargo" | "secured";
+type MeteorState = "idle" | "warning" | "falling" | "impact";
+
+type DepositDefinition = {
+  id: number;
+  kind: CargoKind;
+  position: [number, number];
+};
 
 type CargoDefinition = {
   name: string;
@@ -40,6 +48,18 @@ type DepositRuntime = {
   beacon: THREE.PointLight;
 };
 
+type MeteorRuntime = {
+  group: THREE.Group;
+  marker: THREE.Mesh;
+  markerMaterial: THREE.MeshBasicMaterial;
+  meteor: THREE.Mesh;
+  trail: THREE.Mesh;
+  light: THREE.PointLight;
+  state: MeteorState;
+  timer: number;
+  impactAge: number;
+};
+
 type Snapshot = {
   phase: Phase;
   time: number;
@@ -50,6 +70,11 @@ type Snapshot = {
   drillJammed: boolean;
   repairProgress: number;
   repairsCompleted: number;
+  missionSeed: number;
+  suitIntegrity: number;
+  downed: boolean;
+  recoveryProgress: number;
+  suitRecoveries: number;
   carrying: string | null;
   cargoCondition: number | null;
   message: string;
@@ -60,6 +85,7 @@ type Snapshot = {
   thrusterFuel: number;
   signalsTracked: number;
   nearestSignalDistance: number | null;
+  nearestSignalBearing: number | null;
 };
 
 const cargoData: Record<CargoKind, CargoDefinition> = {
@@ -86,16 +112,29 @@ const cargoData: Record<CargoKind, CargoDefinition> = {
   },
 };
 
-const depositDefinitions: Array<{
-  id: number;
-  kind: CargoKind;
-  position: [number, number];
-}> = [
-  { id: 1, kind: "ferric", position: [-2, -12] },
-  { id: 2, kind: "glass", position: [8, 11] },
-  { id: 3, kind: "platinum", position: [24, -8] },
-  { id: 4, kind: "glass", position: [31, 18] },
-  { id: 5, kind: "ferric", position: [35, -23] },
+const depositSpawnPoints: Array<[number, number]> = [
+  [-2, -12],
+  [8, 11],
+  [24, -8],
+  [31, 18],
+  [35, -23],
+  [-10, 14],
+  [12, 24],
+  [22, 4],
+  [-3, 29],
+  [34, 4],
+  [12, -25],
+  [39, 10],
+  [-25, 22],
+  [-31, -2],
+];
+
+const missionCargoKinds: CargoKind[] = [
+  "ferric",
+  "glass",
+  "platinum",
+  "glass",
+  "ferric",
 ];
 
 const palette = {
@@ -116,12 +155,46 @@ function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
+function formatSignalBearing(bearing: number) {
+  const magnitude = Math.round(Math.abs(bearing));
+  if (magnitude <= 12) return "AHEAD";
+  if (magnitude >= 168) return "BEHIND";
+  return `${bearing > 0 ? "RIGHT" : "LEFT"} ${magnitude}°`;
+}
+
 function seededRandom(seed: number) {
   let current = seed;
   return () => {
     current = (current * 16807) % 2147483647;
     return current / 2147483647;
   };
+}
+
+function shuffled<T>(items: readonly T[], random: () => number) {
+  const result = [...items];
+  for (let index = result.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(random() * (index + 1));
+    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
+  }
+  return result;
+}
+
+function nextMissionSeed(seed: number) {
+  return (seed * 48271) % 99991;
+}
+
+function createMissionDepositDefinitions(seed: number): DepositDefinition[] {
+  const random = seededRandom(seed);
+  const positions = shuffled(depositSpawnPoints, random).slice(
+    0,
+    missionCargoKinds.length,
+  );
+  const kinds = shuffled(missionCargoKinds, random);
+  return positions.map((position, index) => ({
+    id: index + 1,
+    kind: kinds[index],
+    position,
+  }));
 }
 
 function standardMaterial(
@@ -463,7 +536,7 @@ function createAstronaut() {
 }
 
 function createDeposit(
-  definition: (typeof depositDefinitions)[number],
+  definition: DepositDefinition,
 ): DepositRuntime {
   const data = cargoData[definition.kind];
   const group = new THREE.Group();
@@ -650,6 +723,84 @@ function createMeteorStreaks() {
   return streaks;
 }
 
+function createMeteorHazards(scene: THREE.Scene) {
+  return Array.from({ length: 4 }, () => {
+    const group = new THREE.Group();
+    group.visible = false;
+
+    const markerMaterial = new THREE.MeshBasicMaterial({
+      color: palette.red,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const marker = new THREE.Mesh(
+      new THREE.RingGeometry(1.45, 1.82, 36),
+      markerMaterial,
+    );
+    marker.rotation.x = -Math.PI / 2;
+    marker.position.y = 0.1;
+    group.add(marker);
+
+    const crossMaterial = markerMaterial;
+    const crossA = new THREE.Mesh(
+      new THREE.PlaneGeometry(3.2, 0.08),
+      crossMaterial,
+    );
+    crossA.rotation.x = -Math.PI / 2;
+    crossA.position.y = 0.105;
+    group.add(crossA);
+    const crossB = crossA.clone();
+    crossB.rotation.z = Math.PI / 2;
+    group.add(crossB);
+
+    const meteor = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(0.82, 0),
+      standardMaterial(0x40352f, {
+        emissive: palette.coral,
+        emissiveIntensity: 1.7,
+        roughness: 0.82,
+      }),
+    );
+    meteor.castShadow = true;
+    meteor.visible = false;
+    group.add(meteor);
+
+    const trail = new THREE.Mesh(
+      new THREE.ConeGeometry(0.5, 6.8, 10, 1, true),
+      new THREE.MeshBasicMaterial({
+        color: palette.coral,
+        transparent: true,
+        opacity: 0.56,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        side: THREE.DoubleSide,
+      }),
+    );
+    trail.position.y = 3.7;
+    meteor.add(trail);
+
+    const light = new THREE.PointLight(palette.coral, 0, 12, 2);
+    light.position.y = 1;
+    group.add(light);
+
+    scene.add(group);
+    return {
+      group,
+      marker,
+      markerMaterial,
+      meteor,
+      trail,
+      light,
+      state: "idle" as MeteorState,
+      timer: 0,
+      impactAge: 0,
+    } satisfies MeteorRuntime;
+  });
+}
+
 function createPressureVents() {
   const positions: Array<[number, number]> = [
     [-4, 18],
@@ -762,6 +913,7 @@ function createWorld(scene: THREE.Scene) {
   const ship = createShip();
   const rover = createRover();
   const meteorStreaks = createMeteorStreaks();
+  const meteorHazards = createMeteorHazards(scene);
   const pressureVents = createPressureVents();
   scene.add(ship);
   scene.add(rover);
@@ -791,7 +943,15 @@ function createWorld(scene: THREE.Scene) {
   earthCloud.position.copy(earth.position);
   scene.add(earthCloud);
 
-  return { ship, rover, earth, earthCloud, meteorStreaks, pressureVents };
+  return {
+    ship,
+    rover,
+    earth,
+    earthCloud,
+    meteorStreaks,
+    meteorHazards,
+    pressureVents,
+  };
 }
 
 export function MoonGoonsGame() {
@@ -799,6 +959,7 @@ export function MoonGoonsGame() {
   const pointerTargetRef = useRef<HTMLCanvasElement | null>(null);
   const keysRef = useRef(new Set<string>());
   const phaseRef = useRef<Phase>("briefing");
+  const missionSeedRef = useRef(INITIAL_MISSION_SEED);
   const timeRef = useRef(MISSION_SECONDS);
   const scoreRef = useRef(0);
   const heatRef = useRef(0);
@@ -807,6 +968,10 @@ export function MoonGoonsGame() {
   const drillJammedRef = useRef(false);
   const repairProgressRef = useRef(0);
   const repairsCompletedRef = useRef(0);
+  const suitIntegrityRef = useRef(100);
+  const downedRef = useRef(false);
+  const recoveryProgressRef = useRef(0);
+  const suitRecoveriesRef = useRef(0);
   const scanCooldownRef = useRef(0);
   const messageRef = useRef(INITIAL_MESSAGE);
   const carryingRef = useRef<number | null>(null);
@@ -829,6 +994,11 @@ export function MoonGoonsGame() {
     drillJammed: false,
     repairProgress: 0,
     repairsCompleted: 0,
+    missionSeed: INITIAL_MISSION_SEED,
+    suitIntegrity: 100,
+    downed: false,
+    recoveryProgress: 0,
+    suitRecoveries: 0,
     carrying: null,
     cargoCondition: null,
     message: INITIAL_MESSAGE,
@@ -839,6 +1009,7 @@ export function MoonGoonsGame() {
     thrusterFuel: 100,
     signalsTracked: 0,
     nearestSignalDistance: null,
+    nearestSignalBearing: null,
   });
 
   const sound = useCallback(
@@ -979,7 +1150,9 @@ export function MoonGoonsGame() {
     const astronaut = createAstronaut();
     scene.add(astronaut);
 
-    let deposits = depositDefinitions.map((definition) => createDeposit(definition));
+    let deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
+      (definition) => createDeposit(definition),
+    );
     deposits.forEach((deposit) => scene.add(deposit.group));
 
     const scanRing = new THREE.Mesh(
@@ -1049,17 +1222,51 @@ export function MoonGoonsGame() {
     let scanAnimation = 0;
     let hudTimer = 0;
     let warningPlayed = false;
+    let meteorWarningPlayed = false;
+    let missionRandom = seededRandom(missionSeedRef.current + 704);
+    let meteorCooldown = 5.5;
     let stepTimer = 0;
     let cameraImpact = 0;
     let cameraPitch = 0;
     let repairKick = 0;
+    let damageCooldown = 0;
     let animationFrame = 0;
     let previous = performance.now();
 
     const resetDeposits = () => {
       deposits.forEach((deposit) => deposit.group.removeFromParent());
-      deposits = depositDefinitions.map((definition) => createDeposit(definition));
+      deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
+        (definition) => createDeposit(definition),
+      );
       deposits.forEach((deposit) => scene.add(deposit.group));
+    };
+
+    const applySuitDamage = (amount: number) => {
+      if (damageCooldown > 0 || downedRef.current) return "ignored" as const;
+
+      damageCooldown = 1.35;
+      suitIntegrityRef.current = Math.max(0, suitIntegrityRef.current - amount);
+      if (suitIntegrityRef.current > 0) return "damaged" as const;
+
+      downedRef.current = true;
+      recoveryProgressRef.current = 0;
+      velocity.multiplyScalar(0.2);
+      verticalVelocity = Math.min(verticalVelocity, 1.5);
+      const held = deposits.find((deposit) => deposit.id === carryingRef.current);
+      if (held) {
+        scene.attach(held.group);
+        const dropDirection = new THREE.Vector3(0, 0, -1.8).applyQuaternion(
+          astronaut.quaternion,
+        );
+        held.group.position.copy(astronaut.position).add(dropDirection);
+        held.group.position.y = 0.62;
+        held.group.scale.setScalar(1);
+        held.condition = Math.max(0.42, held.condition - 0.08);
+        carryingRef.current = null;
+      }
+      messageRef.current =
+        "SUIT SAFE MODE. HOLD E TO REBOOT. Any cargo separation was completely intentional.";
+      return "downed" as const;
     };
 
     resetRuntimeRef.current = () => {
@@ -1078,18 +1285,34 @@ export function MoonGoonsGame() {
       drillJammedRef.current = false;
       repairProgressRef.current = 0;
       repairsCompletedRef.current = 0;
+      suitIntegrityRef.current = 100;
+      downedRef.current = false;
+      recoveryProgressRef.current = 0;
+      suitRecoveriesRef.current = 0;
       repairLatchRef.current = false;
       scanCooldownRef.current = 0;
       warningPlayed = false;
+      meteorWarningPlayed = false;
+      missionRandom = seededRandom(missionSeedRef.current + 704);
+      meteorCooldown = 4.5 + missionRandom() * 2;
       cameraImpact = 0;
       cameraPitch = 0;
       repairKick = 0;
+      damageCooldown = 0;
       dustBursts.forEach((burst) => {
         burst.age = 1;
         burst.mesh.visible = false;
       });
       world.pressureVents.forEach((vent) => {
         vent.userData.lastLaunchCycle = -1;
+      });
+      world.meteorHazards.forEach((meteor) => {
+        meteor.state = "idle";
+        meteor.timer = 0;
+        meteor.impactAge = 0;
+        meteor.group.visible = false;
+        meteor.meteor.visible = false;
+        meteor.light.intensity = 0;
       });
       resetDeposits();
     };
@@ -1167,6 +1390,48 @@ export function MoonGoonsGame() {
       drillGlow.position.copy(end).add(new THREE.Vector3(0, 0.45, 0));
     };
 
+    const armMeteorHazard = () => {
+      const meteor = world.meteorHazards.find((candidate) => candidate.state === "idle");
+      if (!meteor) return false;
+
+      const angle = missionRandom() * Math.PI * 2;
+      const distance = 3.5 + missionRandom() * 8.5;
+      const target = astronaut.position
+        .clone()
+        .add(new THREE.Vector3(Math.cos(angle) * distance, 0, Math.sin(angle) * distance));
+      const targetRadius = Math.hypot(target.x, target.z);
+      if (targetRadius > MOON_RADIUS - 3) {
+        target.x *= (MOON_RADIUS - 3) / targetRadius;
+        target.z *= (MOON_RADIUS - 3) / targetRadius;
+      }
+      const shipDistance = target.distanceTo(SHIP_POSITION);
+      if (shipDistance < 8.5) {
+        const awayFromShip = target.clone().sub(SHIP_POSITION).setY(0);
+        if (awayFromShip.lengthSq() < 0.01) awayFromShip.set(1, 0, 0);
+        target.copy(SHIP_POSITION).add(awayFromShip.normalize().multiplyScalar(8.5));
+      }
+
+      meteor.group.position.set(target.x, 0.02, target.z);
+      meteor.group.visible = true;
+      meteor.state = "warning";
+      meteor.timer = 1.8;
+      meteor.impactAge = 0;
+      meteor.marker.visible = true;
+      meteor.marker.scale.setScalar(1);
+      meteor.markerMaterial.opacity = 0.46;
+      meteor.meteor.visible = true;
+      meteor.meteor.position.set(0, 34, 0);
+      meteor.meteor.rotation.set(
+        missionRandom() * Math.PI,
+        missionRandom() * Math.PI,
+        missionRandom() * Math.PI,
+      );
+      meteor.trail.visible = true;
+      (meteor.trail.material as THREE.MeshBasicMaterial).opacity = 0.56;
+      meteor.light.intensity = 2;
+      return true;
+    };
+
     const animate = (now: number) => {
       const dt = Math.min((now - previous) / 1000, 0.04);
       previous = now;
@@ -1217,6 +1482,31 @@ export function MoonGoonsGame() {
       if (phase === "active" && !notesOpenRef.current) {
         timeRef.current = Math.max(0, timeRef.current - dt);
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
+        damageCooldown = Math.max(0, damageCooldown - dt);
+
+        if (downedRef.current) {
+          recoveryProgressRef.current = keys.has("KeyE")
+            ? Math.min(100, recoveryProgressRef.current + dt * 44)
+            : Math.max(0, recoveryProgressRef.current - dt * 28);
+          if (recoveryProgressRef.current >= 100) {
+            downedRef.current = false;
+            suitIntegrityRef.current = 42;
+            recoveryProgressRef.current = 0;
+            suitRecoveriesRef.current += 1;
+            damageCooldown = 3;
+            messageRef.current =
+              "Suit reboot complete. Forty-two percent integrity is apparently within policy.";
+            sound("repair");
+          }
+        } else {
+          recoveryProgressRef.current = 0;
+          if (astronaut.position.distanceTo(SHIP_POSITION) < 7.2) {
+            suitIntegrityRef.current = Math.min(
+              100,
+              suitIntegrityRef.current + dt * 9,
+            );
+          }
+        }
 
         if (timeRef.current <= 30 && !warningPlayed) {
           warningPlayed = true;
@@ -1225,6 +1515,110 @@ export function MoonGoonsGame() {
         }
 
         const carried = deposits.find((deposit) => deposit.id === carryingRef.current);
+        if (timeRef.current <= 55) {
+          if (!meteorWarningPlayed) {
+            meteorWarningPlayed = true;
+            messageRef.current =
+              "DEBRIS SHOWER INBOUND. Coral target markers now indicate professional concern.";
+            sound("warning");
+          }
+          meteorCooldown -= dt;
+          if (meteorCooldown <= 0 && armMeteorHazard()) {
+            meteorCooldown =
+              timeRef.current <= 25
+                ? 2.5 + missionRandom() * 1.8
+                : 4 + missionRandom() * 2.5;
+          }
+        }
+
+        world.meteorHazards.forEach((meteor) => {
+          if (meteor.state === "idle") return;
+
+          if (meteor.state === "warning") {
+            meteor.timer -= dt;
+            const warningPulse = 1 + Math.sin(now * 0.025) * 0.16;
+            meteor.marker.scale.setScalar(warningPulse);
+            meteor.markerMaterial.opacity = 0.38 + Math.sin(now * 0.03) * 0.22;
+            meteor.light.intensity = 2.5 + Math.sin(now * 0.024) * 1.4;
+            if (meteor.timer <= 0) {
+              meteor.state = "falling";
+              meteor.timer = 0.72;
+            }
+          } else if (meteor.state === "falling") {
+            meteor.timer -= dt;
+            const fallProgress = THREE.MathUtils.clamp(1 - meteor.timer / 0.72, 0, 1);
+            meteor.meteor.position.y = THREE.MathUtils.lerp(34, 0.65, fallProgress);
+            meteor.meteor.rotation.x += dt * 8;
+            meteor.meteor.rotation.z += dt * 5;
+            meteor.markerMaterial.opacity = 0.62 + Math.sin(now * 0.05) * 0.2;
+            meteor.light.intensity = 4 + fallProgress * 18;
+            meteor.light.position.y = meteor.meteor.position.y;
+            if (meteor.timer <= 0) {
+              meteor.state = "impact";
+              meteor.impactAge = 0;
+              meteor.meteor.visible = false;
+              meteor.trail.visible = false;
+              meteor.light.position.y = 0.8;
+              meteor.light.intensity = 22;
+              emitDustBurst(meteor.group.position, 2.15);
+              sound("warning");
+
+              const impactDistance = meteor.group.position.distanceTo(
+                astronaut.position,
+              );
+              if (impactDistance < 4.4) {
+                const suitResult = applySuitDamage(
+                  impactDistance < 2.35 ? 44 : 28,
+                );
+                const blastDirection = astronaut.position
+                  .clone()
+                  .sub(meteor.group.position)
+                  .setY(0);
+                if (blastDirection.lengthSq() < 0.01) blastDirection.set(1, 0, 0);
+                velocity.add(blastDirection.normalize().multiplyScalar(5.2));
+                verticalVelocity = Math.max(verticalVelocity, carried ? 6.4 : 8.2);
+                playerHeight = Math.max(playerHeight, 0.16);
+                cameraImpact = Math.max(cameraImpact, 1.8);
+                if (carried) {
+                  const impactDamage =
+                    carried.kind === "glass"
+                      ? 0.18
+                      : carried.kind === "ferric"
+                        ? 0.065
+                        : 0.03;
+                  carried.condition = Math.max(
+                    0.42,
+                    carried.condition - impactDamage,
+                  );
+                  if (suitResult !== "downed") {
+                    messageRef.current = `METEOR IMPACT! ${
+                      cargoData[carried.kind].name
+                    } condition ${Math.round(
+                      carried.condition * 100,
+                    )}%. Suit ${Math.round(suitIntegrityRef.current)}%.`;
+                  }
+                } else if (suitResult !== "downed") {
+                  messageRef.current =
+                    `METEOR IMPACT! Your trajectory is now pending peer review. Suit ${Math.round(
+                      suitIntegrityRef.current,
+                    )}%.`;
+                }
+              }
+            }
+          } else {
+            meteor.impactAge += dt;
+            const impactProgress = meteor.impactAge / 0.82;
+            meteor.marker.scale.setScalar(1 + impactProgress * 3.8);
+            meteor.markerMaterial.opacity = Math.max(0, 0.8 * (1 - impactProgress));
+            meteor.light.intensity = Math.max(0, 22 * (1 - impactProgress));
+            if (meteor.impactAge >= 0.82) {
+              meteor.state = "idle";
+              meteor.group.visible = false;
+              meteor.light.intensity = 0;
+            }
+          }
+        });
+
         world.pressureVents.forEach((vent) => {
           const distance = vent.position.distanceTo(astronaut.position);
           const cycle = vent.userData.cycle as number;
@@ -1244,19 +1638,31 @@ export function MoonGoonsGame() {
                 carried.kind === "glass" ? 0.22 : carried.kind === "ferric" ? 0.08 : 0.035;
               carried.condition = Math.max(0.42, carried.condition - hazardDamage);
             }
-            messageRef.current = carried
-              ? `PRESSURE VENT! Crew and ${cargoData[carried.kind].name} launched together. Condition ${Math.round(carried.condition * 100)}%.`
-              : "PRESSURE VENT! Congratulations on the unscheduled field launch.";
+            const suitResult = applySuitDamage(18);
+            if (suitResult !== "downed") {
+              messageRef.current = carried
+                ? `PRESSURE VENT! Crew and ${
+                    cargoData[carried.kind].name
+                  } launched together. Condition ${Math.round(
+                    carried.condition * 100,
+                  )}%. Suit ${Math.round(suitIntegrityRef.current)}%.`
+                : `PRESSURE VENT! Congratulations on the unscheduled field launch. Suit ${Math.round(
+                    suitIntegrityRef.current,
+                  )}%.`;
+            }
             sound("warning");
           }
         });
+        const incapacitated = downedRef.current;
         const speedFactor = carried ? cargoData[carried.kind].speed : 1;
-        const driveInput =
-          (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-          (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
-        const strafeInput =
-          (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
-        const fallbackTurnInput = mouseCapturedRef.current
+        const driveInput = incapacitated
+          ? 0
+          : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+            (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+        const strafeInput = incapacitated
+          ? 0
+          : (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+        const fallbackTurnInput = mouseCapturedRef.current || incapacitated
           ? 0
           : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
         const moving = driveInput !== 0 || strafeInput !== 0;
@@ -1299,14 +1705,17 @@ export function MoonGoonsGame() {
           velocity.z = THREE.MathUtils.damp(velocity.z, 0, momentumDrag, dt);
         }
 
-        if (keys.has("Space") && playerHeight <= 0.01) {
+        if (!incapacitated && keys.has("Space") && playerHeight <= 0.01) {
           verticalVelocity =
             carried?.kind === "platinum" ? JUMP_VELOCITY * 0.72 : JUMP_VELOCITY;
           playerHeight = 0.02;
           emitDustBurst(astronaut.position, carried ? 0.8 : 0.62);
         }
         const thrusterActive =
-          keys.has("Space") && playerHeight > 0.38 && thrusterFuel > 0;
+          !incapacitated &&
+          keys.has("Space") &&
+          playerHeight > 0.38 &&
+          thrusterFuel > 0;
         if (thrusterActive) {
           const cargoEfficiency =
             carried?.kind === "platinum" ? 0.58 : carried ? 0.78 : 1;
@@ -1329,6 +1738,18 @@ export function MoonGoonsGame() {
               const impactStrength = Math.min(1.8, landingSpeed / 4.8);
               emitDustBurst(astronaut.position, impactStrength);
               cameraImpact = Math.max(cameraImpact, impactStrength);
+            }
+            if (landingSpeed > 7.25) {
+              const suitResult = applySuitDamage(
+                Math.min(22, (landingSpeed - 7.25) * 7.5),
+              );
+              if (suitResult !== "ignored") sound("warning");
+              if (suitResult === "damaged") {
+                messageRef.current = `HARD LANDING. Suit integrity ${Math.round(
+                  suitIntegrityRef.current,
+                )}%. Knees remain company property.`;
+                sound("warning");
+              }
             }
           }
         }
@@ -1362,7 +1783,11 @@ export function MoonGoonsGame() {
         );
 
         const gait = now * 0.009;
-        const gaitAmount = moving && playerHeight < 0.05 ? 0.58 : 0.08;
+        const gaitAmount = incapacitated
+          ? 0.03
+          : moving && playerHeight < 0.05
+            ? 0.58
+            : 0.08;
         const leftLeg = astronaut.userData.leftLeg as THREE.Group;
         const rightLeg = astronaut.userData.rightLeg as THREE.Group;
         const leftArm = astronaut.userData.leftArm as THREE.Group;
@@ -1373,7 +1798,7 @@ export function MoonGoonsGame() {
         rightArm.rotation.x = Math.sin(gait) * gaitAmount * 0.7;
         astronaut.rotation.z = THREE.MathUtils.damp(
           astronaut.rotation.z,
-          -strafeInput * 0.065,
+          incapacitated ? -1.18 : -strafeInput * 0.065,
           8,
           dt,
         );
@@ -1386,7 +1811,7 @@ export function MoonGoonsGame() {
           }
         }
 
-        const scanPressed = keys.has("KeyQ");
+        const scanPressed = !incapacitated && keys.has("KeyQ");
         if (scanPressed && !scanLatchRef.current && scanCooldownRef.current <= 0) {
           scanCooldownRef.current = 4;
           scanAnimation = 0.01;
@@ -1445,6 +1870,7 @@ export function MoonGoonsGame() {
               b.position.distanceTo(astronaut.position),
           )[0];
         const drilling =
+          !incapacitated &&
           keys.has("KeyF") &&
           nearestDrillable &&
           nearestDrillable.position.distanceTo(astronaut.position) < 3 &&
@@ -1456,7 +1882,7 @@ export function MoonGoonsGame() {
         const drill = astronaut.userData.drill as THREE.Group;
         const drillLight = astronaut.userData.drillLight as THREE.Mesh;
         const drillLightMaterial = drillLight.material as THREE.MeshStandardMaterial;
-        const repairPressed = keys.has("KeyR");
+        const repairPressed = !incapacitated && keys.has("KeyR");
         if (
           repairPressed &&
           !repairLatchRef.current &&
@@ -1562,7 +1988,7 @@ export function MoonGoonsGame() {
           }
         }
 
-        const interactPressed = keys.has("KeyE");
+        const interactPressed = !incapacitated && keys.has("KeyE");
         if (interactPressed && !interactLatchRef.current) {
           if (carryingRef.current !== null) {
             const held = deposits.find((deposit) => deposit.id === carryingRef.current);
@@ -1591,6 +2017,7 @@ export function MoonGoonsGame() {
                 );
                 held.group.position.copy(astronaut.position).add(dropDirection);
                 held.group.position.y = 0.62;
+                held.group.scale.setScalar(1);
                 carryingRef.current = null;
                 messageRef.current = roughDrop
                   ? `${cargoData[held.kind].name} survived a questionable drop at ${Math.round(held.condition * 100)}% condition.`
@@ -1745,7 +2172,10 @@ export function MoonGoonsGame() {
               b.position.distanceTo(astronaut.position),
           )[0];
         const trackedSignals = deposits.filter(
-          (deposit) => deposit.state !== "hidden" && deposit.state !== "secured",
+          (deposit) =>
+            deposit.state !== "hidden" &&
+            deposit.state !== "secured" &&
+            deposit.id !== carryingRef.current,
         );
         const nearestTracked = trackedSignals
           .filter((deposit) => deposit.state !== "secured")
@@ -1754,6 +2184,32 @@ export function MoonGoonsGame() {
               a.position.distanceTo(astronaut.position) -
               b.position.distanceTo(astronaut.position),
           )[0];
+        let nearestSignalDistance: number | null = null;
+        let nearestSignalBearing: number | null = null;
+        if (nearestTracked) {
+          const trackedPosition = nearestTracked.group.getWorldPosition(
+            new THREE.Vector3(),
+          );
+          const signalDirection = trackedPosition
+            .clone()
+            .sub(astronaut.position)
+            .setY(0);
+          nearestSignalDistance = signalDirection.length();
+          if (nearestSignalDistance > 0.01) {
+            signalDirection.normalize();
+            const facingDirection = new THREE.Vector3(0, 0, -1)
+              .applyQuaternion(astronaut.quaternion)
+              .setY(0)
+              .normalize();
+            nearestSignalBearing = THREE.MathUtils.radToDeg(
+              Math.atan2(
+                facingDirection.x * signalDirection.z -
+                  facingDirection.z * signalDirection.x,
+                facingDirection.dot(signalDirection),
+              ),
+            );
+          }
+        }
         let prompt = "Q · SCAN FOR VALUABLE MATERIAL";
         if (held) {
           prompt =
@@ -1800,6 +2256,35 @@ export function MoonGoonsGame() {
         } else if (ventDistance < 6 && nearestVent.userData.warning) {
           prompt = `VENT PRESSURE RISING · ${Math.round(ventDistance)}m`;
         }
+        const nearbyMeteor = world.meteorHazards
+          .filter(
+            (meteor) =>
+              meteor.state === "warning" || meteor.state === "falling",
+          )
+          .sort(
+            (a, b) =>
+              a.group.position.distanceTo(astronaut.position) -
+              b.group.position.distanceTo(astronaut.position),
+          )[0];
+        if (nearbyMeteor) {
+          const meteorDistance = nearbyMeteor.group.position.distanceTo(
+            astronaut.position,
+          );
+          if (meteorDistance < 7.5) {
+            prompt =
+              nearbyMeteor.state === "falling"
+                ? "IMPACT IMMINENT · MOVE NOW"
+                : `METEOR TARGET LOCK · CLEAR ${Math.max(
+                    1,
+                    Math.round(meteorDistance),
+                  )}m`;
+          }
+        }
+        if (downedRef.current) {
+          prompt = `HOLD E · EMERGENCY SUIT REBOOT · ${Math.round(
+            recoveryProgressRef.current,
+          )}%`;
+        }
         setSnapshot({
           phase: phaseRef.current,
           time: timeRef.current,
@@ -1810,6 +2295,11 @@ export function MoonGoonsGame() {
           drillJammed: drillJammedRef.current,
           repairProgress: repairProgressRef.current,
           repairsCompleted: repairsCompletedRef.current,
+          missionSeed: missionSeedRef.current,
+          suitIntegrity: suitIntegrityRef.current,
+          downed: downedRef.current,
+          recoveryProgress: recoveryProgressRef.current,
+          suitRecoveries: suitRecoveriesRef.current,
           carrying: held ? cargoData[held.kind].name : null,
           cargoCondition: held ? held.condition : null,
           message: messageRef.current,
@@ -1819,9 +2309,8 @@ export function MoonGoonsGame() {
           homeDistance,
           thrusterFuel,
           signalsTracked: trackedSignals.length,
-          nearestSignalDistance: nearestTracked
-            ? nearestTracked.position.distanceTo(astronaut.position)
-            : null,
+          nearestSignalDistance,
+          nearestSignalBearing,
         });
       }
 
@@ -1861,6 +2350,7 @@ export function MoonGoonsGame() {
   }, [requestMouseLock, sound]);
 
   const resetMission = useCallback(() => {
+    missionSeedRef.current = nextMissionSeed(missionSeedRef.current);
     resetRuntimeRef.current?.();
     phaseRef.current = "active";
     messageRef.current =
@@ -1875,6 +2365,11 @@ export function MoonGoonsGame() {
       drillJammed: false,
       repairProgress: 0,
       repairsCompleted: 0,
+      missionSeed: missionSeedRef.current,
+      suitIntegrity: 100,
+      downed: false,
+      recoveryProgress: 0,
+      suitRecoveries: 0,
       carrying: null,
       cargoCondition: null,
       message: messageRef.current,
@@ -1885,6 +2380,7 @@ export function MoonGoonsGame() {
       thrusterFuel: 100,
       signalsTracked: 0,
       nearestSignalDistance: null,
+      nearestSignalBearing: null,
     });
     requestMouseLock();
     sound("launch");
@@ -1907,7 +2403,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 012 // FAILURE + RECOVERY</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 013 // MISSION DIRECTOR</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -1963,7 +2459,7 @@ export function MoonGoonsGame() {
           <aside className={styles.missionPanel}>
             <div className={styles.panelCode}>
               <span>ACTIVE CONTRACT</span>
-              <b>SP-03</b>
+              <b>PM-{String(snapshot.missionSeed).padStart(5, "0")}</b>
             </div>
             <h2>Practice Moon Procurement</h2>
             <p>Secure ¢{CONTRACT_TARGET} in approved scientific material.</p>
@@ -1982,6 +2478,11 @@ export function MoonGoonsGame() {
                 {snapshot.carrying
                   ? `${snapshot.carrying} // ${Math.round((snapshot.cargoCondition ?? 1) * 100)}%`
                   : "Hands regrettably empty"}
+              </span>
+              <span className={snapshot.time <= 55 ? styles.stormActive : ""}>
+                {snapshot.time <= 55
+                  ? "DEBRIS SHOWER // ACTIVE"
+                  : `DEBRIS FORECAST // T-${Math.ceil(snapshot.time - 55)}s`}
               </span>
             </div>
           </aside>
@@ -2030,6 +2531,30 @@ export function MoonGoonsGame() {
                 }}
               />
             </div>
+            <div className={styles.suitLabel}>
+              <span>{snapshot.downed ? "SUIT SAFE MODE" : "SUIT INTEGRITY"}</span>
+              <strong>
+                {snapshot.downed
+                  ? `REBOOT ${Math.round(snapshot.recoveryProgress)}%`
+                  : `${Math.round(snapshot.suitIntegrity)}%`}
+              </strong>
+            </div>
+            <div className={styles.suitTrack}>
+              <div
+                className={
+                  snapshot.downed || snapshot.suitIntegrity <= 30
+                    ? styles.suitDanger
+                    : ""
+                }
+                style={{
+                  width: `${
+                    snapshot.downed
+                      ? snapshot.recoveryProgress
+                      : snapshot.suitIntegrity
+                  }%`,
+                }}
+              />
+            </div>
             <div className={styles.scanStatus}>
               <span>SCANNER Q</span>
               <strong>
@@ -2043,7 +2568,11 @@ export function MoonGoonsGame() {
               <strong>
                 {snapshot.nearestSignalDistance === null
                   ? "NO CONTACT"
-                  : `NEAREST ${Math.round(snapshot.nearestSignalDistance)}m`}
+                  : `NEAREST ${Math.round(snapshot.nearestSignalDistance)}m · ${
+                      snapshot.nearestSignalBearing === null
+                        ? "AHEAD"
+                        : formatSignalBearing(snapshot.nearestSignalBearing)
+                    }`}
               </strong>
             </div>
             <div className={styles.fuelLabel}>
@@ -2086,7 +2615,7 @@ export function MoonGoonsGame() {
             </div>
             <div>
               <kbd>E</kbd>
-              <span>GRAB / DEPOSIT</span>
+              <span>INTERACT / REBOOT</span>
             </div>
           </div>
 
@@ -2141,7 +2670,7 @@ export function MoonGoonsGame() {
               <div>
                 <span>03</span>
                 <strong>SURVIVE</strong>
-                <p>Watch for coral warning rings. Vents launch crew and damage cargo.</p>
+                <p>Coral warnings mean move. Hold E to reboot a disabled suit.</p>
               </div>
             </div>
             <button type="button" onClick={resetMission}>
@@ -2175,8 +2704,10 @@ export function MoonGoonsGame() {
                 <strong>{snapshot.depositsSecured}</strong>
               </div>
               <div>
-                <span>FIELD REPAIRS</span>
-                <strong>{snapshot.repairsCompleted}</strong>
+                <span>TOOL / SUIT FIXES</span>
+                <strong>
+                  {snapshot.repairsCompleted} / {snapshot.suitRecoveries}
+                </strong>
               </div>
               <div>
                 <span>SAFETY RATING</span>
