@@ -927,6 +927,209 @@
   font-size: 9px;
 }
 
+.settingsToggle {
+  position: absolute;
+  z-index: 22;
+  top: 332px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px 9px 9px;
+  border: 1px solid rgba(255, 134, 94, 0.5);
+  background: rgba(7, 12, 23, 0.9);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+  backdrop-filter: blur(10px);
+}
+
+.shell[data-phase="active"] .settingsToggle {
+  top: 478px;
+}
+
+.settingsToggle > span {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  background: var(--orange);
+  color: #1b0d09;
+  font-family: monospace;
+  font-size: 10px;
+}
+
+.settingsPanel {
+  position: absolute;
+  z-index: 31;
+  top: 18px;
+  right: 18px;
+  bottom: 18px;
+  display: flex;
+  width: min(400px, calc(100vw - 36px));
+  flex-direction: column;
+  border: 1px solid rgba(255, 134, 94, 0.36);
+  border-top: 5px solid var(--orange);
+  background: linear-gradient(145deg, rgba(20, 23, 39, 0.99), rgba(7, 10, 19, 0.99));
+  box-shadow: -28px 0 80px rgba(0, 0, 0, 0.5);
+}
+
+.settingsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 21px 14px;
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(255, 134, 94, 0.1), transparent 62%);
+}
+
+.settingsHeader div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.settingsHeader span,
+.settingsIntro,
+.rangeSetting,
+.checkSetting,
+.settingsFooter {
+  font-family: monospace;
+}
+
+.settingsHeader span {
+  color: var(--orange);
+  font-size: 8px;
+  letter-spacing: 0.18em;
+}
+
+.settingsHeader h2 {
+  margin: 0;
+  font-size: 27px;
+  letter-spacing: -0.03em;
+}
+
+.settingsHeader > button {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font-size: 24px;
+  cursor: pointer;
+}
+
+.settingsIntro {
+  margin: 0;
+  padding: 12px 21px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
+.settingsBody {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 21px;
+  overflow-y: auto;
+}
+
+.rangeSetting,
+.checkSetting {
+  display: flex;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.rangeSetting {
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.rangeSetting > span,
+.checkSetting > span {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+}
+
+.rangeSetting output {
+  color: var(--cyan);
+  font-weight: 900;
+}
+
+.rangeSetting input {
+  width: 100%;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+
+.rangeSetting small,
+.checkSetting small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.checkSetting {
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+}
+
+.checkSetting > span {
+  flex-direction: column;
+  gap: 5px;
+}
+
+.checkSetting input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  accent-color: var(--orange);
+  cursor: pointer;
+}
+
+.settingsFooter {
+  display: flex;
+  gap: 8px;
+  padding: 14px 21px 20px;
+  border-top: 1px solid var(--line);
+}
+
+.settingsFooter button {
+  flex: 1;
+  padding: 11px 10px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.settingsFooter button:last-child {
+  border-color: var(--orange);
+  background: var(--orange);
+  color: #1b0d09;
+}
+
 .notesPanel {
   position: absolute;
   z-index: 30;
@@ -1285,11 +1488,22 @@
     bottom: 118px;
   }
 
+  .settingsToggle {
+    top: auto;
+    right: 12px;
+    bottom: 171px;
+  }
+
   .shell[data-phase="active"] .notesToggle {
     top: auto;
   }
 
-  .notesPanel {
+  .shell[data-phase="active"] .settingsToggle {
+    top: auto;
+  }
+
+  .notesPanel,
+  .settingsPanel {
     inset: 8px;
     width: auto;
   }

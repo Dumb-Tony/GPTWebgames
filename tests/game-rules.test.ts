@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CONTRACT_TARGET,
+  DEFAULT_CONTROL_SETTINGS,
   advanceSuitRecovery,
   applySuitDamage,
+  canAirmailCargo,
   calculateCargoImpactCondition,
   calculateCargoValue,
   createMissionDepositDefinitions,
@@ -11,6 +13,7 @@ import {
   formatTime,
   missionMaximumValue,
   nextMissionSeed,
+  normalizeControlSettings,
   registerRepairStrike,
   seededRandom,
 } from "../app/game/gameRules.ts";
@@ -89,4 +92,23 @@ test("low-gravity throws punish fragile cargo more than dense cargo", () => {
       calculateCargoImpactCondition("platinum", 1, 7),
   );
   assert.equal(calculateCargoImpactCondition("glass", 0.5, 100), 0.42);
+});
+
+test("only airborne cargo inside the receiver gate counts as airmail", () => {
+  assert.equal(canAirmailCargo(2, 2.4, true), true);
+  assert.equal(canAirmailCargo(2.36, 2.4, true), false);
+  assert.equal(canAirmailCargo(2, 4.81, true), false);
+  assert.equal(canAirmailCargo(2, 2.4, false), false);
+});
+
+test("control preferences reject invalid values and clamp extreme tuning", () => {
+  assert.deepEqual(normalizeControlSettings(null), DEFAULT_CONTROL_SETTINGS);
+  assert.deepEqual(
+    normalizeControlSettings({ lookSensitivity: 9, invertY: true, volume: -4 }),
+    { lookSensitivity: 2, invertY: true, volume: 0 },
+  );
+  assert.deepEqual(
+    normalizeControlSettings({ lookSensitivity: 0.1, volume: 4 }),
+    { lookSensitivity: 0.45, invertY: false, volume: 1 },
+  );
 });

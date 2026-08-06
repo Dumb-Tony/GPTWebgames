@@ -2,13 +2,16 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { ControlSettingsPanel } from "./ControlSettingsPanel";
 import { FieldNotes } from "./FieldNotes";
 import {
   CONTRACT_TARGET,
+  DEFAULT_CONTROL_SETTINGS,
   DRILL_JAM_WEAR,
   MISSION_SECONDS,
   advanceSuitRecovery,
   applySuitDamage as calculateSuitDamage,
+  canAirmailCargo,
   calculateCargoImpactCondition,
   calculateCargoValue,
   cargoData,
@@ -16,9 +19,11 @@ import {
   formatSignalBearing,
   formatTime,
   nextMissionSeed,
+  normalizeControlSettings,
   registerRepairStrike,
   seededRandom,
   type CargoKind,
+  type ControlSettings,
   type DepositDefinition,
 } from "./gameRules";
 import styles from "./game.module.css";
@@ -29,6 +34,11 @@ const JUMP_VELOCITY = 6.1;
 const INITIAL_MISSION_SEED = 12013;
 const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
 const SHIP_POSITION = new THREE.Vector3(-19, 0, 5);
+const SHIP_ROTATION = 0.16;
+const CARGO_RECEIVER_POSITION = new THREE.Vector3(4.8, 0, 1.3)
+  .applyAxisAngle(new THREE.Vector3(0, 1, 0), SHIP_ROTATION)
+  .add(SHIP_POSITION);
+const CONTROL_SETTINGS_KEY = "moon-goons-control-settings-v1";
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
@@ -72,6 +82,7 @@ type Snapshot = {
   drillJammed: boolean;
   repairProgress: number;
   repairsCompleted: number;
+  airmailDeliveries: number;
   missionSeed: number;
   suitIntegrity: number;
   downed: boolean;
@@ -154,7 +165,7 @@ function cylinder(
 function createShip() {
   const ship = new THREE.Group();
   ship.position.copy(SHIP_POSITION);
-  ship.rotation.y = 0.16;
+  ship.rotation.y = SHIP_ROTATION;
 
   const body = box([9.6, 3.8, 6.8], palette.cream, [0, 3.6, 0], {
     metalness: 0.2,
@@ -272,6 +283,64 @@ function createShip() {
   ship.userData.guideRings = guideRings;
 
   return ship;
+}
+
+function createCargoReceiver() {
+  const receiver = new THREE.Group();
+  receiver.position.copy(CARGO_RECEIVER_POSITION);
+  receiver.rotation.y = SHIP_ROTATION;
+
+  const padMaterial = new THREE.MeshBasicMaterial({
+    color: palette.yellow,
+    transparent: true,
+    opacity: 0.5,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+  });
+  const pad = new THREE.Mesh(new THREE.RingGeometry(1.75, 2.3, 48), padMaterial);
+  pad.rotation.x = -Math.PI / 2;
+  pad.position.y = 0.08;
+  receiver.add(pad);
+
+  const gateMaterial = new THREE.MeshBasicMaterial({
+    color: palette.cyan,
+    transparent: true,
+    opacity: 0.26,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const gate = new THREE.Mesh(new THREE.TorusGeometry(2.28, 0.08, 8, 48), gateMaterial);
+  gate.position.y = 2.35;
+  gate.rotation.y = Math.PI / 2;
+  receiver.add(gate);
+
+  const beamMaterial = new THREE.MeshBasicMaterial({
+    color: palette.cyan,
+    transparent: true,
+    opacity: 0.055,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+    blending: THREE.AdditiveBlending,
+  });
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(2.05, 2.3, 4.7, 24, 1, true),
+    beamMaterial,
+  );
+  beam.position.y = 2.4;
+  receiver.add(beam);
+
+  const light = new THREE.PointLight(palette.cyan, 5, 10, 2);
+  light.position.y = 2.1;
+  receiver.add(light);
+
+  receiver.userData.pad = pad;
+  receiver.userData.padMaterial = padMaterial;
+  receiver.userData.gate = gate;
+  receiver.userData.gateMaterial = gateMaterial;
+  receiver.userData.beamMaterial = beamMaterial;
+  receiver.userData.light = light;
+  return receiver;
 }
 
 function createRover() {
@@ -819,11 +888,13 @@ function createWorld(scene: THREE.Scene) {
   }
 
   const ship = createShip();
+  const cargoReceiver = createCargoReceiver();
   const rover = createRover();
   const meteorStreaks = createMeteorStreaks();
   const meteorHazards = createMeteorHazards(scene);
   const pressureVents = createPressureVents();
   scene.add(ship);
+  scene.add(cargoReceiver);
   scene.add(rover);
   scene.add(meteorStreaks);
   pressureVents.forEach((vent) => scene.add(vent));
@@ -853,6 +924,7 @@ function createWorld(scene: THREE.Scene) {
 
   return {
     ship,
+    cargoReceiver,
     rover,
     earth,
     earthCloud,
@@ -876,6 +948,7 @@ export function MoonGoonsGame() {
   const drillJammedRef = useRef(false);
   const repairProgressRef = useRef(0);
   const repairsCompletedRef = useRef(0);
+  const airmailDeliveriesRef = useRef(0);
   const suitIntegrityRef = useRef(100);
   const downedRef = useRef(false);
   const recoveryProgressRef = useRef(0);
@@ -887,9 +960,23 @@ export function MoonGoonsGame() {
   const scanLatchRef = useRef(false);
   const repairLatchRef = useRef(false);
   const notesOpenRef = useRef(false);
+  const settingsOpenRef = useRef(false);
   const mouseCapturedRef = useRef(false);
   const resetRuntimeRef = useRef<(() => void) | null>(null);
   const [notesOpen, setNotesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [controlSettings, setControlSettings] = useState<ControlSettings>(() => {
+    if (typeof window === "undefined") return DEFAULT_CONTROL_SETTINGS;
+
+    try {
+      const stored = window.localStorage.getItem(CONTROL_SETTINGS_KEY);
+      const parsed = stored ? (JSON.parse(stored) as Partial<ControlSettings>) : null;
+      return normalizeControlSettings(parsed);
+    } catch {
+      return DEFAULT_CONTROL_SETTINGS;
+    }
+  });
+  const controlSettingsRef = useRef<ControlSettings>(controlSettings);
   const [mouseCaptured, setMouseCaptured] = useState(false);
   const [mouseLockIssue, setMouseLockIssue] = useState<MouseLockIssue>(null);
   const [snapshot, setSnapshot] = useState<Snapshot>({
@@ -902,6 +989,7 @@ export function MoonGoonsGame() {
     drillJammed: false,
     repairProgress: 0,
     repairsCompleted: 0,
+    airmailDeliveries: 0,
     missionSeed: INITIAL_MISSION_SEED,
     suitIntegrity: 100,
     downed: false,
@@ -920,6 +1008,17 @@ export function MoonGoonsGame() {
     nearestSignalBearing: null,
   });
 
+  const updateControlSettings = useCallback((nextSettings: ControlSettings) => {
+    const normalized = normalizeControlSettings(nextSettings);
+    controlSettingsRef.current = normalized;
+    setControlSettings(normalized);
+    try {
+      window.localStorage.setItem(CONTROL_SETTINGS_KEY, JSON.stringify(normalized));
+    } catch {
+      // Preferences still apply for this session when storage is unavailable.
+    }
+  }, []);
+
   const sound = useCallback(
     (
       tone:
@@ -932,6 +1031,8 @@ export function MoonGoonsGame() {
         | "repair",
     ) => {
       try {
+        const volume = controlSettingsRef.current.volume;
+        if (volume <= 0.001) return;
         const AudioContextClass =
           window.AudioContext ||
           (window as typeof window & { webkitAudioContext?: typeof AudioContext })
@@ -959,7 +1060,7 @@ export function MoonGoonsGame() {
         oscillator.frequency.setValueAtTime(settings[0], now);
         oscillator.frequency.exponentialRampToValueAtTime(settings[1], now + settings[2]);
         gain.gain.setValueAtTime(
-          tone === "step" ? 0.018 : tone === "repair" ? 0.042 : 0.05,
+          (tone === "step" ? 0.018 : tone === "repair" ? 0.042 : 0.05) * volume,
           now,
         );
         gain.gain.exponentialRampToValueAtTime(0.001, now + settings[2]);
@@ -977,6 +1078,10 @@ export function MoonGoonsGame() {
 
   const handleNotesOpenChange = useCallback((open: boolean) => {
     notesOpenRef.current = open;
+    if (open) {
+      settingsOpenRef.current = false;
+      setSettingsOpen(false);
+    }
     keysRef.current.clear();
     if (open && document.pointerLockElement) {
       document.exitPointerLock();
@@ -984,8 +1089,27 @@ export function MoonGoonsGame() {
     setNotesOpen(open);
   }, []);
 
+  const handleSettingsOpenChange = useCallback((open: boolean) => {
+    settingsOpenRef.current = open;
+    if (open) {
+      notesOpenRef.current = false;
+      setNotesOpen(false);
+    }
+    keysRef.current.clear();
+    if (open && document.pointerLockElement) {
+      document.exitPointerLock();
+    }
+    setSettingsOpen(open);
+  }, []);
+
   const requestMouseLock = useCallback(() => {
-    if (phaseRef.current !== "active" || notesOpenRef.current) return;
+    if (
+      phaseRef.current !== "active" ||
+      notesOpenRef.current ||
+      settingsOpenRef.current
+    ) {
+      return;
+    }
 
     const target = pointerTargetRef.current;
     if (
@@ -1138,6 +1262,7 @@ export function MoonGoonsGame() {
     let cameraPitch = 0;
     let repairKick = 0;
     let damageCooldown = 0;
+    let airmailFlash = 0;
     let animationFrame = 0;
     let previous = performance.now();
 
@@ -1196,6 +1321,7 @@ export function MoonGoonsGame() {
       drillJammedRef.current = false;
       repairProgressRef.current = 0;
       repairsCompletedRef.current = 0;
+      airmailDeliveriesRef.current = 0;
       suitIntegrityRef.current = 100;
       downedRef.current = false;
       recoveryProgressRef.current = 0;
@@ -1210,6 +1336,7 @@ export function MoonGoonsGame() {
       cameraPitch = 0;
       repairKick = 0;
       damageCooldown = 0;
+      airmailFlash = 0;
       dustBursts.forEach((burst) => {
         burst.age = 1;
         burst.mesh.visible = false;
@@ -1269,15 +1396,17 @@ export function MoonGoonsGame() {
       if (
         document.pointerLockElement !== renderer.domElement ||
         phaseRef.current !== "active" ||
-        notesOpenRef.current
+        notesOpenRef.current ||
+        settingsOpenRef.current
       ) {
         return;
       }
       const deltaX = THREE.MathUtils.clamp(event.movementX, -45, 45);
       const deltaY = THREE.MathUtils.clamp(event.movementY, -35, 35);
-      astronaut.rotation.y -= deltaX * 0.00235;
+      const { lookSensitivity, invertY } = controlSettingsRef.current;
+      astronaut.rotation.y -= deltaX * 0.00235 * lookSensitivity;
       cameraPitch = THREE.MathUtils.clamp(
-        cameraPitch - deltaY * 0.0019,
+        cameraPitch + deltaY * 0.0019 * lookSensitivity * (invertY ? 1 : -1),
         -0.28,
         0.34,
       );
@@ -1350,6 +1479,21 @@ export function MoonGoonsGame() {
       const keys = keysRef.current;
       const phase = phaseRef.current;
 
+      airmailFlash = Math.max(0, airmailFlash - dt * 1.25);
+      const receiverPulse = 1 + Math.sin(now * 0.0045) * 0.06 + airmailFlash * 0.22;
+      const receiverPad = world.cargoReceiver.userData.pad as THREE.Mesh;
+      const receiverGate = world.cargoReceiver.userData.gate as THREE.Mesh;
+      receiverPad.rotation.z -= dt * (0.18 + airmailFlash * 2.2);
+      receiverGate.scale.setScalar(receiverPulse);
+      (world.cargoReceiver.userData.padMaterial as THREE.MeshBasicMaterial).opacity =
+        0.38 + airmailFlash * 0.46;
+      (world.cargoReceiver.userData.gateMaterial as THREE.MeshBasicMaterial).opacity =
+        0.2 + airmailFlash * 0.72;
+      (world.cargoReceiver.userData.beamMaterial as THREE.MeshBasicMaterial).opacity =
+        0.045 + airmailFlash * 0.18;
+      (world.cargoReceiver.userData.light as THREE.PointLight).intensity =
+        4.5 + airmailFlash * 18;
+
       world.pressureVents.forEach((vent, index) => {
         const total = now * 0.001 + (vent.userData.offset as number);
         const cycleTime = total % 9;
@@ -1390,7 +1534,11 @@ export function MoonGoonsGame() {
             : 0.65;
       });
 
-      if (phase === "active" && !notesOpenRef.current) {
+      if (
+        phase === "active" &&
+        !notesOpenRef.current &&
+        !settingsOpenRef.current
+      ) {
         timeRef.current = Math.max(0, timeRef.current - dt);
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
         damageCooldown = Math.max(0, damageCooldown - dt);
@@ -1786,6 +1934,32 @@ export function MoonGoonsGame() {
                 deposit.velocity.z *= -0.3;
               }
 
+              const receiverOffset = deposit.group.position
+                .clone()
+                .sub(CARGO_RECEIVER_POSITION);
+              const receiverDistance = Math.hypot(receiverOffset.x, receiverOffset.z);
+              if (
+                canAirmailCargo(
+                  receiverDistance,
+                  deposit.group.position.y,
+                  deposit.isBallistic,
+                )
+              ) {
+                const earned = calculateCargoValue(deposit.kind, deposit.condition);
+                deposit.state = "secured";
+                deposit.group.visible = false;
+                deposit.velocity.set(0, 0, 0);
+                deposit.isBallistic = false;
+                scoreRef.current += earned;
+                airmailDeliveriesRef.current += 1;
+                airmailFlash = 1;
+                emitDustBurst(CARGO_RECEIVER_POSITION, 1.45);
+                cameraImpact = Math.max(cameraImpact, 0.32);
+                messageRef.current = `AIRMAIL ACCEPTED! ${cargoData[deposit.kind].name} secured for ¢${earned}. No carrying required.`;
+                sound("secure");
+                return;
+              }
+
               if (deposit.group.position.y <= 0.65) {
                 const impactSpeed = Math.abs(deposit.velocity.y);
                 const previousCondition = deposit.condition;
@@ -1946,7 +2120,7 @@ export function MoonGoonsGame() {
           if (carryingRef.current !== null) {
             const held = deposits.find((deposit) => deposit.id === carryingRef.current);
             if (held) {
-              if (astronaut.position.distanceTo(SHIP_POSITION) < 7.2) {
+              if (astronaut.position.distanceTo(CARGO_RECEIVER_POSITION) < 3.8) {
                 held.state = "secured";
                 held.group.visible = false;
                 const earned = calculateCargoValue(held.kind, held.condition);
@@ -2126,6 +2300,7 @@ export function MoonGoonsGame() {
         hudTimer = 0;
         const held = deposits.find((deposit) => deposit.id === carryingRef.current);
         const homeDistance = astronaut.position.distanceTo(SHIP_POSITION);
+        const receiverDistance = astronaut.position.distanceTo(CARGO_RECEIVER_POSITION);
         const nearbyCargo = deposits
           .filter((deposit) => deposit.state === "cargo")
           .sort(
@@ -2185,9 +2360,9 @@ export function MoonGoonsGame() {
         let prompt = "Q · SCAN FOR VALUABLE MATERIAL";
         if (held) {
           prompt =
-            homeDistance < 7.2
+            receiverDistance < 3.8
               ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
-              : `E DROP · SHIFT+E THROW · SHIP ${Math.round(homeDistance)}m`;
+              : `E DROP · SHIFT+E AIRMAIL · BAY ${Math.round(receiverDistance)}m`;
         } else if (
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
@@ -2267,6 +2442,7 @@ export function MoonGoonsGame() {
           drillJammed: drillJammedRef.current,
           repairProgress: repairProgressRef.current,
           repairsCompleted: repairsCompletedRef.current,
+          airmailDeliveries: airmailDeliveriesRef.current,
           missionSeed: missionSeedRef.current,
           suitIntegrity: suitIntegrityRef.current,
           downed: downedRef.current,
@@ -2337,6 +2513,7 @@ export function MoonGoonsGame() {
       drillJammed: false,
       repairProgress: 0,
       repairsCompleted: 0,
+      airmailDeliveries: 0,
       missionSeed: missionSeedRef.current,
       suitIntegrity: 100,
       downed: false,
@@ -2375,7 +2552,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 014 // MISSION DIRECTOR</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 015 // MISSION DIRECTOR</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -2385,6 +2562,12 @@ export function MoonGoonsGame() {
       </header>
 
       <FieldNotes open={notesOpen} onOpenChange={handleNotesOpenChange} />
+      <ControlSettingsPanel
+        open={settingsOpen}
+        settings={controlSettings}
+        onOpenChange={handleSettingsOpenChange}
+        onSettingsChange={updateControlSettings}
+      />
 
       {snapshot.phase === "active" && (
         <>
@@ -2445,7 +2628,10 @@ export function MoonGoonsGame() {
               <div style={{ width: `${percent}%` }} />
             </div>
             <div className={styles.miniStats}>
-              <span>{snapshot.depositsSecured} samples secured</span>
+              <span>
+                {snapshot.depositsSecured} samples secured · {snapshot.airmailDeliveries}{" "}
+                airmail
+              </span>
               <span>
                 {snapshot.carrying
                   ? `${snapshot.carrying} // ${Math.round((snapshot.cargoCondition ?? 1) * 100)}%`
@@ -2625,8 +2811,8 @@ export function MoonGoonsGame() {
             </h1>
             <p className={styles.lede}>
               Explore a fully 3D Practice Moon, find buried material, manage your drill,
-              dodge unstable pressure vents, and haul ¢{CONTRACT_TARGET} back to the
-              warm yellow lights of the ship.
+              dodge unstable pressure vents, and haul—or throw—¢{CONTRACT_TARGET} back
+              to the ship&apos;s glowing cargo receiver.
             </p>
             <div className={styles.briefGrid}>
               <div>
@@ -2642,7 +2828,7 @@ export function MoonGoonsGame() {
               <div>
                 <span>03</span>
                 <strong>SURVIVE</strong>
-                <p>Coral warnings mean move. Hold E to reboot a disabled suit.</p>
+                <p>Coral warnings mean move. Shift+E can airmail cargo into the ship.</p>
               </div>
             </div>
             <button type="button" onClick={resetMission}>
@@ -2682,8 +2868,8 @@ export function MoonGoonsGame() {
                 </strong>
               </div>
               <div>
-                <span>SAFETY RATING</span>
-                <strong>{snapshot.phase === "success" ? "C−" : "PENDING"}</strong>
+                <span>AIRMAIL DELIVERIES</span>
+                <strong>{snapshot.airmailDeliveries}</strong>
               </div>
             </div>
             <button type="button" onClick={resetMission}>

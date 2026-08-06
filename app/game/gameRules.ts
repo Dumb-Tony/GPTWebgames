@@ -4,6 +4,20 @@ export const DRILL_JAM_WEAR = 100;
 export const REPAIR_STRIKE_STRENGTH = 34;
 export const SUIT_REBOOT_RATE = 44;
 export const SUIT_REBOOT_DECAY = 28;
+export const CARGO_RECEIVER_RADIUS = 2.35;
+export const CARGO_RECEIVER_MAX_HEIGHT = 4.8;
+
+export type ControlSettings = {
+  lookSensitivity: number;
+  invertY: boolean;
+  volume: number;
+};
+
+export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
+  lookSensitivity: 1,
+  invertY: false,
+  volume: 0.75,
+};
 
 export type CargoKind = "ferric" | "glass" | "platinum";
 
@@ -135,6 +149,38 @@ export function calculateCargoImpactCondition(
   const damagingSpeed = Math.max(0, impactSpeed - 3);
   const fragility = kind === "glass" ? 0.045 : kind === "ferric" ? 0.016 : 0.008;
   return Math.max(0.42, safeCondition - damagingSpeed * fragility);
+}
+
+export function canAirmailCargo(
+  horizontalDistance: number,
+  height: number,
+  isBallistic: boolean,
+) {
+  return (
+    isBallistic &&
+    horizontalDistance <= CARGO_RECEIVER_RADIUS &&
+    height >= 0.35 &&
+    height <= CARGO_RECEIVER_MAX_HEIGHT
+  );
+}
+
+export function normalizeControlSettings(
+  settings: Partial<ControlSettings> | null | undefined,
+): ControlSettings {
+  const sensitivity = Number(settings?.lookSensitivity);
+  const volume = Number(settings?.volume);
+  return {
+    lookSensitivity: Number.isFinite(sensitivity)
+      ? Math.min(2, Math.max(0.45, sensitivity))
+      : DEFAULT_CONTROL_SETTINGS.lookSensitivity,
+    invertY:
+      typeof settings?.invertY === "boolean"
+        ? settings.invertY
+        : DEFAULT_CONTROL_SETTINGS.invertY,
+    volume: Number.isFinite(volume)
+      ? Math.min(1, Math.max(0, volume))
+      : DEFAULT_CONTROL_SETTINGS.volume,
+  };
 }
 
 export function registerRepairStrike(progress: number) {
