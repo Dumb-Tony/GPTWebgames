@@ -902,6 +902,10 @@
   backdrop-filter: blur(10px);
 }
 
+.shell[data-phase="active"] .notesToggle {
+  top: 424px;
+}
+
 .notesToggle > span {
   display: grid;
   width: 27px;
@@ -1279,6 +1283,10 @@
     top: auto;
     right: 12px;
     bottom: 118px;
+  }
+
+  .shell[data-phase="active"] .notesToggle {
+    top: auto;
   }
 
   .notesPanel {

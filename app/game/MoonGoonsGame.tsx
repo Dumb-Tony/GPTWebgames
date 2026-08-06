@@ -3,37 +3,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { FieldNotes } from "./FieldNotes";
+import {
+  CONTRACT_TARGET,
+  DRILL_JAM_WEAR,
+  MISSION_SECONDS,
+  advanceSuitRecovery,
+  applySuitDamage as calculateSuitDamage,
+  calculateCargoImpactCondition,
+  calculateCargoValue,
+  cargoData,
+  createMissionDepositDefinitions,
+  formatSignalBearing,
+  formatTime,
+  nextMissionSeed,
+  registerRepairStrike,
+  seededRandom,
+  type CargoKind,
+  type DepositDefinition,
+} from "./gameRules";
 import styles from "./game.module.css";
 
-const CONTRACT_TARGET = 900;
-const MISSION_SECONDS = 180;
 const MOON_RADIUS = 48;
 const MOON_GRAVITY = 4.35;
 const JUMP_VELOCITY = 6.1;
-const DRILL_JAM_WEAR = 100;
 const INITIAL_MISSION_SEED = 12013;
 const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
 const SHIP_POSITION = new THREE.Vector3(-19, 0, 5);
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
-type CargoKind = "ferric" | "glass" | "platinum";
 type DepositState = "hidden" | "revealed" | "extracting" | "cargo" | "secured";
 type MeteorState = "idle" | "warning" | "falling" | "impact";
-
-type DepositDefinition = {
-  id: number;
-  kind: CargoKind;
-  position: [number, number];
-};
-
-type CargoDefinition = {
-  name: string;
-  value: number;
-  speed: number;
-  color: number;
-  emissive: number;
-};
 
 type DepositRuntime = {
   id: number;
@@ -42,6 +42,8 @@ type DepositRuntime = {
   state: DepositState;
   progress: number;
   condition: number;
+  velocity: THREE.Vector3;
+  isBallistic: boolean;
   group: THREE.Group;
   shell: THREE.Object3D;
   core: THREE.Object3D;
@@ -88,55 +90,6 @@ type Snapshot = {
   nearestSignalBearing: number | null;
 };
 
-const cargoData: Record<CargoKind, CargoDefinition> = {
-  ferric: {
-    name: "Ferric Nodule",
-    value: 180,
-    speed: 0.86,
-    color: 0xb76d4a,
-    emissive: 0x5c2116,
-  },
-  glass: {
-    name: "Lunar Glass",
-    value: 320,
-    speed: 0.78,
-    color: 0x56cad3,
-    emissive: 0x174f61,
-  },
-  platinum: {
-    name: "Platinum Core",
-    value: 620,
-    speed: 0.57,
-    color: 0xd8dced,
-    emissive: 0x334d59,
-  },
-};
-
-const depositSpawnPoints: Array<[number, number]> = [
-  [-2, -12],
-  [8, 11],
-  [24, -8],
-  [31, 18],
-  [35, -23],
-  [-10, 14],
-  [12, 24],
-  [22, 4],
-  [-3, 29],
-  [34, 4],
-  [12, -25],
-  [39, 10],
-  [-25, 22],
-  [-31, -2],
-];
-
-const missionCargoKinds: CargoKind[] = [
-  "ferric",
-  "glass",
-  "platinum",
-  "glass",
-  "ferric",
-];
-
 const palette = {
   void: 0x060914,
   lunar: 0x4a4d5c,
@@ -149,53 +102,6 @@ const palette = {
   green: 0x8ee07d,
   graphite: 0x202733,
 };
-
-function formatTime(seconds: number) {
-  const safe = Math.max(0, Math.ceil(seconds));
-  return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
-}
-
-function formatSignalBearing(bearing: number) {
-  const magnitude = Math.round(Math.abs(bearing));
-  if (magnitude <= 12) return "AHEAD";
-  if (magnitude >= 168) return "BEHIND";
-  return `${bearing > 0 ? "RIGHT" : "LEFT"} ${magnitude}°`;
-}
-
-function seededRandom(seed: number) {
-  let current = seed;
-  return () => {
-    current = (current * 16807) % 2147483647;
-    return current / 2147483647;
-  };
-}
-
-function shuffled<T>(items: readonly T[], random: () => number) {
-  const result = [...items];
-  for (let index = result.length - 1; index > 0; index -= 1) {
-    const swapIndex = Math.floor(random() * (index + 1));
-    [result[index], result[swapIndex]] = [result[swapIndex], result[index]];
-  }
-  return result;
-}
-
-function nextMissionSeed(seed: number) {
-  return (seed * 48271) % 99991;
-}
-
-function createMissionDepositDefinitions(seed: number): DepositDefinition[] {
-  const random = seededRandom(seed);
-  const positions = shuffled(depositSpawnPoints, random).slice(
-    0,
-    missionCargoKinds.length,
-  );
-  const kinds = shuffled(missionCargoKinds, random);
-  return positions.map((position, index) => ({
-    id: index + 1,
-    kind: kinds[index],
-    position,
-  }));
-}
 
 function standardMaterial(
   color: number,
@@ -592,6 +498,8 @@ function createDeposit(
     state: "hidden",
     progress: 0,
     condition: 1,
+    velocity: new THREE.Vector3(),
+    isBallistic: false,
     group,
     shell,
     core,
@@ -1118,7 +1026,7 @@ export function MoonGoonsGame() {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = true;
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    renderer.shadowMap.type = THREE.PCFShadowMap;
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.12;
@@ -1245,8 +1153,9 @@ export function MoonGoonsGame() {
       if (damageCooldown > 0 || downedRef.current) return "ignored" as const;
 
       damageCooldown = 1.35;
-      suitIntegrityRef.current = Math.max(0, suitIntegrityRef.current - amount);
-      if (suitIntegrityRef.current > 0) return "damaged" as const;
+      const damage = calculateSuitDamage(suitIntegrityRef.current, amount);
+      suitIntegrityRef.current = damage.integrity;
+      if (!damage.downed) return "damaged" as const;
 
       downedRef.current = true;
       recoveryProgressRef.current = 0;
@@ -1262,6 +1171,8 @@ export function MoonGoonsGame() {
         held.group.position.y = 0.62;
         held.group.scale.setScalar(1);
         held.condition = Math.max(0.42, held.condition - 0.08);
+        held.velocity.set(0, 0, 0);
+        held.isBallistic = false;
         carryingRef.current = null;
       }
       messageRef.current =
@@ -1485,9 +1396,11 @@ export function MoonGoonsGame() {
         damageCooldown = Math.max(0, damageCooldown - dt);
 
         if (downedRef.current) {
-          recoveryProgressRef.current = keys.has("KeyE")
-            ? Math.min(100, recoveryProgressRef.current + dt * 44)
-            : Math.max(0, recoveryProgressRef.current - dt * 28);
+          recoveryProgressRef.current = advanceSuitRecovery(
+            recoveryProgressRef.current,
+            keys.has("KeyE"),
+            dt,
+          );
           if (recoveryProgressRef.current >= 100) {
             downedRef.current = false;
             suitIntegrityRef.current = 42;
@@ -1855,7 +1768,49 @@ export function MoonGoonsGame() {
           const ring = deposit.group.children[2] as THREE.Mesh;
           ring.scale.setScalar(1 + Math.sin(now * 0.003 + index) * 0.08);
           if (deposit.state === "cargo" && carryingRef.current !== deposit.id) {
-            deposit.group.position.y = 0.65 + Math.sin(now * 0.0025 + index) * 0.12;
+            if (deposit.isBallistic) {
+              deposit.velocity.y -= MOON_GRAVITY * dt;
+              deposit.group.position.addScaledVector(deposit.velocity, dt);
+              deposit.group.rotation.x += dt * 4.8;
+              deposit.group.rotation.z += dt * 3.2;
+
+              const surfaceRadius = Math.hypot(
+                deposit.group.position.x,
+                deposit.group.position.z,
+              );
+              if (surfaceRadius > MOON_RADIUS - 1.2) {
+                const boundaryScale = (MOON_RADIUS - 1.2) / surfaceRadius;
+                deposit.group.position.x *= boundaryScale;
+                deposit.group.position.z *= boundaryScale;
+                deposit.velocity.x *= -0.3;
+                deposit.velocity.z *= -0.3;
+              }
+
+              if (deposit.group.position.y <= 0.65) {
+                const impactSpeed = Math.abs(deposit.velocity.y);
+                const previousCondition = deposit.condition;
+                deposit.group.position.y = 0.65;
+                deposit.condition = calculateCargoImpactCondition(
+                  deposit.kind,
+                  deposit.condition,
+                  impactSpeed,
+                );
+                deposit.velocity.set(0, 0, 0);
+                deposit.isBallistic = false;
+                emitDustBurst(deposit.group.position, Math.min(1.35, impactSpeed / 4.5));
+                cameraImpact = Math.max(cameraImpact, Math.min(0.28, impactSpeed * 0.025));
+                if (previousCondition - deposit.condition > 0.005) {
+                  messageRef.current = `${cargoData[deposit.kind].name} completed its flight at ${Math.round(
+                    deposit.condition * 100,
+                  )}% condition.`;
+                  sound("warning");
+                } else {
+                  sound("step");
+                }
+              }
+            } else {
+              deposit.group.position.y = 0.65 + Math.sin(now * 0.0025 + index) * 0.12;
+            }
           }
         });
 
@@ -1888,22 +1843,20 @@ export function MoonGoonsGame() {
           !repairLatchRef.current &&
           drillJammedRef.current
         ) {
-          repairProgressRef.current = Math.min(100, repairProgressRef.current + 34);
+          const repair = registerRepairStrike(repairProgressRef.current);
+          repairProgressRef.current = repair.progress;
           repairKick = 1;
           drill.rotation.y += 0.72;
           cameraImpact = Math.max(cameraImpact, 0.22);
           sound("repair");
-          if (repairProgressRef.current >= 100) {
+          if (repair.completed) {
             drillJammedRef.current = false;
             drillWearRef.current = 18;
-            repairProgressRef.current = 0;
             repairsCompletedRef.current += 1;
             messageRef.current =
               "Percussive maintenance successful. The drill has agreed to continue.";
           } else {
-            const hitsRemaining = Math.ceil(
-              (100 - repairProgressRef.current) / 34,
-            );
+            const hitsRemaining = repair.hitsRemaining;
             messageRef.current = `REPAIR STRIKE REGISTERED. ${hitsRemaining} hit${
               hitsRemaining === 1 ? "" : "s"
             } remaining.`;
@@ -1996,14 +1949,15 @@ export function MoonGoonsGame() {
               if (astronaut.position.distanceTo(SHIP_POSITION) < 7.2) {
                 held.state = "secured";
                 held.group.visible = false;
-                const earned = Math.round(cargoData[held.kind].value * held.condition);
+                const earned = calculateCargoValue(held.kind, held.condition);
                 scoreRef.current += earned;
                 carryingRef.current = null;
                 scene.attach(held.group);
                 messageRef.current = `${cargoData[held.kind].name} secured for ¢${earned}. S.P.A.C.E. owns it now.`;
                 sound("secure");
               } else {
-                const roughDrop = playerHeight > 0.3 || velocity.length() > 4;
+                const throwing = keys.has("ShiftLeft") || keys.has("ShiftRight");
+                const roughDrop = !throwing && (playerHeight > 0.3 || velocity.length() > 4);
                 if (roughDrop) {
                   const damageScale =
                     held.kind === "glass" ? 0.19 : held.kind === "ferric" ? 0.07 : 0.025;
@@ -2016,12 +1970,28 @@ export function MoonGoonsGame() {
                   astronaut.quaternion,
                 );
                 held.group.position.copy(astronaut.position).add(dropDirection);
-                held.group.position.y = 0.62;
+                held.group.position.y = throwing ? 2.4 + playerHeight : 0.62;
                 held.group.scale.setScalar(1);
+                if (throwing) {
+                  const throwSpeed = held.kind === "platinum" ? 6.1 : 8.2;
+                  const throwLift = held.kind === "platinum" ? 2.7 : 3.5;
+                  held.velocity
+                    .copy(dropDirection)
+                    .setLength(throwSpeed)
+                    .addScaledVector(velocity, 0.42);
+                  held.velocity.y = throwLift + Math.max(0, verticalVelocity * 0.35);
+                  held.isBallistic = true;
+                } else {
+                  held.velocity.set(0, 0, 0);
+                  held.isBallistic = false;
+                }
                 carryingRef.current = null;
-                messageRef.current = roughDrop
-                  ? `${cargoData[held.kind].name} survived a questionable drop at ${Math.round(held.condition * 100)}% condition.`
-                  : `${cargoData[held.kind].name} placed with suspicious competence.`;
+                messageRef.current = throwing
+                  ? `${cargoData[held.kind].name} launched. Scientific value now subject to landing conditions.`
+                  : roughDrop
+                    ? `${cargoData[held.kind].name} survived a questionable drop at ${Math.round(held.condition * 100)}% condition.`
+                    : `${cargoData[held.kind].name} placed with suspicious competence.`;
+                if (throwing) sound("launch");
               }
             }
           } else {
@@ -2037,6 +2007,8 @@ export function MoonGoonsGame() {
               nearbyCargo.position.distanceTo(astronaut.position) < 3.2
             ) {
               carryingRef.current = nearbyCargo.id;
+              nearbyCargo.velocity.set(0, 0, 0);
+              nearbyCargo.isBallistic = false;
               carriedAnchor.add(nearbyCargo.group);
               nearbyCargo.group.position.set(0, 0, 0);
               nearbyCargo.group.scale.setScalar(nearbyCargo.kind === "platinum" ? 0.9 : 0.72);
@@ -2215,7 +2187,7 @@ export function MoonGoonsGame() {
           prompt =
             homeDistance < 7.2
               ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
-              : `RETURN CARGO TO SHIP · ${Math.round(homeDistance)}m`;
+              : `E DROP · SHIFT+E THROW · SHIP ${Math.round(homeDistance)}m`;
         } else if (
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
@@ -2390,7 +2362,7 @@ export function MoonGoonsGame() {
   const urgent = snapshot.phase === "active" && snapshot.time <= 30;
 
   return (
-    <main className={styles.shell}>
+    <main className={styles.shell} data-phase={snapshot.phase}>
       <div
         ref={mountRef}
         className={`${styles.canvas} ${mouseCaptured ? styles.mouseLocked : ""}`}
@@ -2403,7 +2375,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 013 // MISSION DIRECTOR</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 014 // MISSION DIRECTOR</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -2614,8 +2586,8 @@ export function MoonGoonsGame() {
               <span>REPAIR JAM</span>
             </div>
             <div>
-              <kbd>E</kbd>
-              <span>INTERACT / REBOOT</span>
+              <kbd>E / ⇧E</kbd>
+              <span>USE / THROW</span>
             </div>
           </div>
 
