@@ -19,7 +19,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   volume: 0.75,
 };
 
-export type CargoKind = "ferric" | "glass" | "platinum";
+export type CargoKind = "ferric" | "glass" | "platinum" | "vial";
 
 export type CargoDefinition = {
   name: string;
@@ -27,6 +27,13 @@ export type CargoDefinition = {
   speed: number;
   color: number;
   emissive: number;
+  structure: string;
+  impactThreshold: number;
+  impactDamage: number;
+  minimumCondition: number;
+  breakSpeed: number | null;
+  restitution: number;
+  horizontalRetention: number;
 };
 
 export type DepositDefinition = {
@@ -42,6 +49,13 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     speed: 0.86,
     color: 0xb76d4a,
     emissive: 0x5c2116,
+    structure: "RUGGED",
+    impactThreshold: 4.2,
+    impactDamage: 0.012,
+    minimumCondition: 0.5,
+    breakSpeed: null,
+    restitution: 0.54,
+    horizontalRetention: 0.86,
   },
   glass: {
     name: "Lunar Glass",
@@ -49,6 +63,13 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     speed: 0.78,
     color: 0x56cad3,
     emissive: 0x174f61,
+    structure: "BRITTLE",
+    impactThreshold: 3,
+    impactDamage: 0.05,
+    minimumCondition: 0.24,
+    breakSpeed: null,
+    restitution: 0.38,
+    horizontalRetention: 0.78,
   },
   platinum: {
     name: "Platinum Core",
@@ -56,6 +77,27 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     speed: 0.57,
     color: 0xd8dced,
     emissive: 0x334d59,
+    structure: "DENSE",
+    impactThreshold: 5,
+    impactDamage: 0.006,
+    minimumCondition: 0.72,
+    breakSpeed: null,
+    restitution: 0.27,
+    horizontalRetention: 0.7,
+  },
+  vial: {
+    name: "Cryogenic Sample Vial",
+    value: 440,
+    speed: 0.83,
+    color: 0x8ee07d,
+    emissive: 0x286b64,
+    structure: "FRAGILE // SHATTERS",
+    impactThreshold: 2.2,
+    impactDamage: 0.07,
+    minimumCondition: 0.08,
+    breakSpeed: 10.2,
+    restitution: 0.46,
+    horizontalRetention: 0.82,
   },
 };
 
@@ -80,7 +122,7 @@ const missionCargoKinds: CargoKind[] = [
   "ferric",
   "glass",
   "platinum",
-  "glass",
+  "vial",
   "ferric",
 ];
 
@@ -145,10 +187,46 @@ export function calculateCargoImpactCondition(
   condition: number,
   impactSpeed: number,
 ) {
-  const safeCondition = Math.min(1, Math.max(0.42, condition));
-  const damagingSpeed = Math.max(0, impactSpeed - 3);
-  const fragility = kind === "glass" ? 0.045 : kind === "ferric" ? 0.016 : 0.008;
-  return Math.max(0.42, safeCondition - damagingSpeed * fragility);
+  return calculateCargoImpact(kind, condition, impactSpeed).condition;
+}
+
+export function calculateCargoImpact(
+  kind: CargoKind,
+  condition: number,
+  impactSpeed: number,
+) {
+  const data = cargoData[kind];
+  const safeCondition = Math.min(1, Math.max(0, condition));
+  const safeSpeed = Math.max(0, impactSpeed);
+  const broken = data.breakSpeed !== null && safeSpeed >= data.breakSpeed;
+  const damagingSpeed = Math.max(0, safeSpeed - data.impactThreshold);
+  return {
+    broken,
+    condition: broken
+      ? 0
+      : Math.max(
+          data.minimumCondition,
+          safeCondition - damagingSpeed * data.impactDamage,
+        ),
+  };
+}
+
+export function calculateCargoBounce(
+  kind: CargoKind,
+  verticalImpactSpeed: number,
+  bounceCount: number,
+) {
+  const data = cargoData[kind];
+  const verticalSpeed =
+    Math.max(0, verticalImpactSpeed) *
+    data.restitution *
+    Math.pow(0.86, Math.max(0, bounceCount));
+  const continues = bounceCount < 5 && verticalSpeed >= 0.72;
+  return {
+    continues,
+    verticalSpeed: continues ? verticalSpeed : 0,
+    horizontalRetention: continues ? data.horizontalRetention : 0,
+  };
 }
 
 export function canAirmailCargo(

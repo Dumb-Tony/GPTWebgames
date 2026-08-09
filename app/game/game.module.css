@@ -808,7 +808,7 @@
 }
 
 .resultsCard {
-  width: min(760px, 94vw);
+  width: min(860px, 94vw);
   border-top-color: var(--green);
 }
 
@@ -862,7 +862,7 @@
 }
 
 .resultGrid {
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(3, 1fr);
 }
 
 .resultGrid > div {

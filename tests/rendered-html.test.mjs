@@ -86,7 +86,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /ACCEPT LIABILITY \+ ENTER 3D/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
   assert.match(html, /3D AESTHETIC VERTICAL SLICE \/\/ PRACTICE MOON/);
-  assert.match(html, /BUILD 015/);
+  assert.match(html, /BUILD 016/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 

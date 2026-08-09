@@ -6,6 +6,8 @@ import {
   advanceSuitRecovery,
   applySuitDamage,
   canAirmailCargo,
+  calculateCargoBounce,
+  calculateCargoImpact,
   calculateCargoImpactCondition,
   calculateCargoValue,
   createMissionDepositDefinitions,
@@ -45,7 +47,7 @@ test("mission generation is deterministic, varied, unique, and completable", () 
     assert.ok(missionMaximumValue(mission) >= CONTRACT_TARGET);
     assert.deepEqual(
       mission.map(({ kind }) => kind).sort(),
-      ["ferric", "ferric", "glass", "glass", "platinum"],
+      ["ferric", "ferric", "glass", "platinum", "vial"],
     );
   }
 });
@@ -91,7 +93,32 @@ test("low-gravity throws punish fragile cargo more than dense cargo", () => {
     calculateCargoImpactCondition("glass", 1, 7) <
       calculateCargoImpactCondition("platinum", 1, 7),
   );
-  assert.equal(calculateCargoImpactCondition("glass", 0.5, 100), 0.42);
+  assert.equal(calculateCargoImpactCondition("glass", 0.5, 100), 0.24);
+});
+
+test("cargo bounces by material and eventually settles", () => {
+  assert.deepEqual(calculateCargoBounce("ferric", 6, 0), {
+    continues: true,
+    verticalSpeed: 3.24,
+    horizontalRetention: 0.86,
+  });
+  assert.deepEqual(calculateCargoBounce("platinum", 2, 0), {
+    continues: false,
+    verticalSpeed: 0,
+    horizontalRetention: 0,
+  });
+  assert.equal(calculateCargoBounce("ferric", 12, 5).continues, false);
+});
+
+test("cryogenic vials degrade on rough impacts and shatter at the redline", () => {
+  const damaged = calculateCargoImpact("vial", 1, 9);
+  assert.equal(damaged.broken, false);
+  assert.ok(damaged.condition < 0.55);
+  assert.deepEqual(calculateCargoImpact("vial", 1, 10.2), {
+    broken: true,
+    condition: 0,
+  });
+  assert.equal(calculateCargoImpact("platinum", 1, 20).broken, false);
 });
 
 test("only airborne cargo inside the receiver gate counts as airmail", () => {

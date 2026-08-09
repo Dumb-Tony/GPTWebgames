@@ -12,7 +12,8 @@ import {
   advanceSuitRecovery,
   applySuitDamage as calculateSuitDamage,
   canAirmailCargo,
-  calculateCargoImpactCondition,
+  calculateCargoBounce,
+  calculateCargoImpact,
   calculateCargoValue,
   cargoData,
   createMissionDepositDefinitions,
@@ -42,7 +43,13 @@ const CONTROL_SETTINGS_KEY = "moon-goons-control-settings-v1";
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
-type DepositState = "hidden" | "revealed" | "extracting" | "cargo" | "secured";
+type DepositState =
+  | "hidden"
+  | "revealed"
+  | "extracting"
+  | "cargo"
+  | "secured"
+  | "broken";
 type MeteorState = "idle" | "warning" | "falling" | "impact";
 
 type DepositRuntime = {
@@ -54,9 +61,12 @@ type DepositRuntime = {
   condition: number;
   velocity: THREE.Vector3;
   isBallistic: boolean;
+  bounceCount: number;
   group: THREE.Group;
   shell: THREE.Object3D;
   core: THREE.Object3D;
+  ring: THREE.Object3D;
+  shards: THREE.Group;
   beacon: THREE.PointLight;
 };
 
@@ -83,6 +93,8 @@ type Snapshot = {
   repairProgress: number;
   repairsCompleted: number;
   airmailDeliveries: number;
+  cargoBounces: number;
+  brokenSamples: number;
   missionSeed: number;
   suitIntegrity: number;
   downed: boolean;
@@ -90,6 +102,7 @@ type Snapshot = {
   suitRecoveries: number;
   carrying: string | null;
   cargoCondition: number | null;
+  cargoStructure: string | null;
   message: string;
   scanCooldown: number;
   depositsSecured: number;
@@ -527,21 +540,65 @@ function createDeposit(
   shell.receiveShadow = true;
   group.add(shell);
 
-  const coreGeometry =
-    definition.kind === "glass"
-      ? new THREE.OctahedronGeometry(1.15, 0)
-      : new THREE.DodecahedronGeometry(definition.kind === "platinum" ? 1.42 : 1.05, 0);
-  const core = new THREE.Mesh(
-    coreGeometry,
-    standardMaterial(data.color, {
-      emissive: data.emissive,
-      emissiveIntensity: definition.kind === "glass" ? 1.7 : 0.85,
-      metalness: definition.kind === "platinum" ? 0.78 : 0.2,
-      roughness: definition.kind === "platinum" ? 0.26 : 0.48,
-    }),
-  );
+  let core: THREE.Object3D;
+  if (definition.kind === "vial") {
+    const vial = new THREE.Group();
+    const glassBody = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.56, 0.56, 1.7, 12),
+      new THREE.MeshPhysicalMaterial({
+        color: 0xc8fff4,
+        emissive: data.emissive,
+        emissiveIntensity: 0.7,
+        metalness: 0.05,
+        roughness: 0.18,
+        transparent: true,
+        opacity: 0.62,
+      }),
+    );
+    const specimen = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.4, 0.4, 1.25, 12),
+      standardMaterial(data.color, {
+        emissive: data.emissive,
+        emissiveIntensity: 2.1,
+        roughness: 0.28,
+      }),
+    );
+    const capMaterial = standardMaterial(palette.cream, {
+      metalness: 0.72,
+      roughness: 0.3,
+    });
+    const topCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.64, 0.64, 0.25, 12),
+      capMaterial,
+    );
+    topCap.position.y = 0.92;
+    const bottomCap = topCap.clone();
+    bottomCap.position.y = -0.92;
+    vial.add(glassBody, specimen, topCap, bottomCap);
+    vial.rotation.z = 0.12;
+    core = vial;
+  } else {
+    const coreGeometry =
+      definition.kind === "glass"
+        ? new THREE.OctahedronGeometry(1.15, 0)
+        : new THREE.DodecahedronGeometry(
+            definition.kind === "platinum" ? 1.42 : 1.05,
+            0,
+          );
+    core = new THREE.Mesh(
+      coreGeometry,
+      standardMaterial(data.color, {
+        emissive: data.emissive,
+        emissiveIntensity: definition.kind === "glass" ? 1.7 : 0.85,
+        metalness: definition.kind === "platinum" ? 0.78 : 0.2,
+        roughness: definition.kind === "platinum" ? 0.26 : 0.48,
+      }),
+    );
+  }
   core.visible = false;
-  core.castShadow = true;
+  core.traverse((object) => {
+    if (object instanceof THREE.Mesh) object.castShadow = true;
+  });
   group.add(core);
 
   const ring = new THREE.Mesh(
@@ -556,6 +613,29 @@ function createDeposit(
   ring.position.y = 0.1;
   group.add(ring);
 
+  const shards = new THREE.Group();
+  for (let index = 0; index < 7; index += 1) {
+    const angle = (index / 7) * Math.PI * 2;
+    const fragment = new THREE.Mesh(
+      new THREE.TetrahedronGeometry(0.16 + (index % 3) * 0.055, 0),
+      standardMaterial(index % 2 === 0 ? data.color : 0xc8fff4, {
+        emissive: data.emissive,
+        emissiveIntensity: 0.9,
+        roughness: 0.34,
+      }),
+    );
+    fragment.position.set(
+      Math.cos(angle) * (0.35 + (index % 2) * 0.28),
+      0.08 + (index % 3) * 0.12,
+      Math.sin(angle) * (0.35 + (index % 2) * 0.28),
+    );
+    fragment.rotation.set(angle * 0.7, angle, angle * 0.35);
+    fragment.castShadow = true;
+    shards.add(fragment);
+  }
+  shards.visible = false;
+  group.add(shards);
+
   const beacon = new THREE.PointLight(data.color, 0, 8, 2);
   beacon.position.y = 1.4;
   group.add(beacon);
@@ -569,9 +649,12 @@ function createDeposit(
     condition: 1,
     velocity: new THREE.Vector3(),
     isBallistic: false,
+    bounceCount: 0,
     group,
     shell,
     core,
+    ring,
+    shards,
     beacon,
   };
 }
@@ -949,6 +1032,8 @@ export function MoonGoonsGame() {
   const repairProgressRef = useRef(0);
   const repairsCompletedRef = useRef(0);
   const airmailDeliveriesRef = useRef(0);
+  const cargoBouncesRef = useRef(0);
+  const brokenSamplesRef = useRef(0);
   const suitIntegrityRef = useRef(100);
   const downedRef = useRef(false);
   const recoveryProgressRef = useRef(0);
@@ -990,6 +1075,8 @@ export function MoonGoonsGame() {
     repairProgress: 0,
     repairsCompleted: 0,
     airmailDeliveries: 0,
+    cargoBounces: 0,
+    brokenSamples: 0,
     missionSeed: INITIAL_MISSION_SEED,
     suitIntegrity: 100,
     downed: false,
@@ -997,6 +1084,7 @@ export function MoonGoonsGame() {
     suitRecoveries: 0,
     carrying: null,
     cargoCondition: null,
+    cargoStructure: null,
     message: INITIAL_MESSAGE,
     scanCooldown: 0,
     depositsSecured: 0,
@@ -1027,6 +1115,8 @@ export function MoonGoonsGame() {
         | "secure"
         | "warning"
         | "launch"
+        | "bounce"
+        | "break"
         | "step"
         | "repair",
     ) => {
@@ -1048,11 +1138,13 @@ export function MoonGoonsGame() {
           secure: [390, 820, 0.3],
           warning: [170, 115, 0.24],
           launch: [105, 340, 0.52],
+          bounce: [155, 92, 0.13],
+          break: [640, 88, 0.42],
           step: [92, 72, 0.055],
           repair: [125, 540, 0.14],
         }[tone];
         oscillator.type =
-          tone === "warning" || tone === "repair"
+          tone === "warning" || tone === "repair" || tone === "break"
             ? "square"
             : tone === "step"
               ? "triangle"
@@ -1266,6 +1358,28 @@ export function MoonGoonsGame() {
     let animationFrame = 0;
     let previous = performance.now();
 
+    const shatterDeposit = (deposit: DepositRuntime, impactSpeed: number) => {
+      deposit.state = "broken";
+      deposit.condition = 0;
+      deposit.velocity.set(0, 0, 0);
+      deposit.isBallistic = false;
+      deposit.bounceCount = 0;
+      deposit.group.position.y = 0.22;
+      deposit.group.scale.setScalar(1);
+      deposit.shell.visible = false;
+      deposit.core.visible = false;
+      deposit.ring.visible = false;
+      deposit.shards.visible = true;
+      deposit.beacon.intensity = 0;
+      brokenSamplesRef.current += 1;
+      emitDustBurst(deposit.group.position, 1.65);
+      cameraImpact = Math.max(cameraImpact, Math.min(0.48, impactSpeed * 0.04));
+      messageRef.current = `${cargoData[deposit.kind].name} SHATTERED at ${impactSpeed.toFixed(
+        1,
+      )} m/s. Scientific value: aggressively zero.`;
+      sound("break");
+    };
+
     const resetDeposits = () => {
       deposits.forEach((deposit) => deposit.group.removeFromParent());
       deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
@@ -1298,6 +1412,7 @@ export function MoonGoonsGame() {
         held.condition = Math.max(0.42, held.condition - 0.08);
         held.velocity.set(0, 0, 0);
         held.isBallistic = false;
+        held.bounceCount = 0;
         carryingRef.current = null;
       }
       messageRef.current =
@@ -1322,6 +1437,8 @@ export function MoonGoonsGame() {
       repairProgressRef.current = 0;
       repairsCompletedRef.current = 0;
       airmailDeliveriesRef.current = 0;
+      cargoBouncesRef.current = 0;
+      brokenSamplesRef.current = 0;
       suitIntegrityRef.current = 100;
       downedRef.current = false;
       recoveryProgressRef.current = 0;
@@ -1912,9 +2029,14 @@ export function MoonGoonsGame() {
 
         deposits.forEach((deposit, index) => {
           if (!deposit.group.visible || deposit.state === "secured") return;
+          if (deposit.state === "broken") {
+            deposit.shards.children.forEach((fragment, fragmentIndex) => {
+              fragment.rotation.y += dt * (0.18 + fragmentIndex * 0.035);
+            });
+            return;
+          }
           deposit.group.rotation.y += dt * (deposit.state === "cargo" ? 0.58 : 0.16);
-          const ring = deposit.group.children[2] as THREE.Mesh;
-          ring.scale.setScalar(1 + Math.sin(now * 0.003 + index) * 0.08);
+          deposit.ring.scale.setScalar(1 + Math.sin(now * 0.003 + index) * 0.08);
           if (deposit.state === "cargo" && carryingRef.current !== deposit.id) {
             if (deposit.isBallistic) {
               deposit.velocity.y -= MOON_GRAVITY * dt;
@@ -1950,6 +2072,7 @@ export function MoonGoonsGame() {
                 deposit.group.visible = false;
                 deposit.velocity.set(0, 0, 0);
                 deposit.isBallistic = false;
+                deposit.bounceCount = 0;
                 scoreRef.current += earned;
                 airmailDeliveriesRef.current += 1;
                 airmailFlash = 1;
@@ -1961,25 +2084,55 @@ export function MoonGoonsGame() {
               }
 
               if (deposit.group.position.y <= 0.65) {
-                const impactSpeed = Math.abs(deposit.velocity.y);
+                const verticalImpactSpeed = Math.abs(deposit.velocity.y);
+                const impactSpeed = deposit.velocity.length();
                 const previousCondition = deposit.condition;
                 deposit.group.position.y = 0.65;
-                deposit.condition = calculateCargoImpactCondition(
+                const impact = calculateCargoImpact(
                   deposit.kind,
                   deposit.condition,
                   impactSpeed,
                 );
-                deposit.velocity.set(0, 0, 0);
-                deposit.isBallistic = false;
+                deposit.condition = impact.condition;
                 emitDustBurst(deposit.group.position, Math.min(1.35, impactSpeed / 4.5));
                 cameraImpact = Math.max(cameraImpact, Math.min(0.28, impactSpeed * 0.025));
-                if (previousCondition - deposit.condition > 0.005) {
-                  messageRef.current = `${cargoData[deposit.kind].name} completed its flight at ${Math.round(
-                    deposit.condition * 100,
-                  )}% condition.`;
-                  sound("warning");
+
+                if (impact.broken) {
+                  shatterDeposit(deposit, impactSpeed);
                 } else {
-                  sound("step");
+                  const bounce = calculateCargoBounce(
+                    deposit.kind,
+                    verticalImpactSpeed,
+                    deposit.bounceCount,
+                  );
+                  if (bounce.continues) {
+                    deposit.bounceCount += 1;
+                    cargoBouncesRef.current += 1;
+                    deposit.velocity.y = bounce.verticalSpeed;
+                    deposit.velocity.x *= bounce.horizontalRetention;
+                    deposit.velocity.z *= bounce.horizontalRetention;
+                    deposit.group.position.y = 0.68;
+                    messageRef.current = `${cargoData[deposit.kind].name} ricochet #${
+                      deposit.bounceCount
+                    } // ${Math.round(deposit.condition * 100)}% condition. Chase it.`;
+                    sound(
+                      previousCondition - deposit.condition > 0.045
+                        ? "warning"
+                        : "bounce",
+                    );
+                  } else {
+                    deposit.velocity.set(0, 0, 0);
+                    deposit.isBallistic = false;
+                    deposit.bounceCount = 0;
+                    if (previousCondition - deposit.condition > 0.005) {
+                      messageRef.current = `${cargoData[deposit.kind].name} completed its flight at ${Math.round(
+                        deposit.condition * 100,
+                      )}% condition.`;
+                      sound("warning");
+                    } else {
+                      sound("step");
+                    }
+                  }
                 }
               }
             } else {
@@ -2084,7 +2237,9 @@ export function MoonGoonsGame() {
             nearestDrillable.shell.visible = false;
             nearestDrillable.core.visible = true;
             nearestDrillable.beacon.intensity = 9;
-            messageRef.current = `${cargoData[nearestDrillable.kind].name} extracted. It is now a logistics problem.`;
+            messageRef.current = `${cargoData[nearestDrillable.kind].name} extracted // ${cargoData[
+              nearestDrillable.kind
+            ].structure}. It is now a logistics problem.`;
             sound("pickup");
           }
           if (drillWearRef.current >= DRILL_JAM_WEAR) {
@@ -2133,11 +2288,13 @@ export function MoonGoonsGame() {
                 const throwing = keys.has("ShiftLeft") || keys.has("ShiftRight");
                 const roughDrop = !throwing && (playerHeight > 0.3 || velocity.length() > 4);
                 if (roughDrop) {
-                  const damageScale =
-                    held.kind === "glass" ? 0.19 : held.kind === "ferric" ? 0.07 : 0.025;
-                  const impact =
-                    0.7 + Math.min(1.4, playerHeight * 0.16 + velocity.length() * 0.055);
-                  held.condition = Math.max(0.42, held.condition - damageScale * impact);
+                  const roughImpactSpeed =
+                    3.8 + Math.min(5.2, playerHeight * 0.7 + velocity.length() * 0.42);
+                  held.condition = calculateCargoImpact(
+                    held.kind,
+                    held.condition,
+                    roughImpactSpeed,
+                  ).condition;
                 }
                 scene.attach(held.group);
                 const dropDirection = new THREE.Vector3(0, 0, -2.3).applyQuaternion(
@@ -2155,13 +2312,15 @@ export function MoonGoonsGame() {
                     .addScaledVector(velocity, 0.42);
                   held.velocity.y = throwLift + Math.max(0, verticalVelocity * 0.35);
                   held.isBallistic = true;
+                  held.bounceCount = 0;
                 } else {
                   held.velocity.set(0, 0, 0);
                   held.isBallistic = false;
+                  held.bounceCount = 0;
                 }
                 carryingRef.current = null;
                 messageRef.current = throwing
-                  ? `${cargoData[held.kind].name} launched. Scientific value now subject to landing conditions.`
+                  ? `${cargoData[held.kind].name} launched // ${cargoData[held.kind].structure}. Expect ricochets.`
                   : roughDrop
                     ? `${cargoData[held.kind].name} survived a questionable drop at ${Math.round(held.condition * 100)}% condition.`
                     : `${cargoData[held.kind].name} placed with suspicious competence.`;
@@ -2183,10 +2342,13 @@ export function MoonGoonsGame() {
               carryingRef.current = nearbyCargo.id;
               nearbyCargo.velocity.set(0, 0, 0);
               nearbyCargo.isBallistic = false;
+              nearbyCargo.bounceCount = 0;
               carriedAnchor.add(nearbyCargo.group);
               nearbyCargo.group.position.set(0, 0, 0);
               nearbyCargo.group.scale.setScalar(nearbyCargo.kind === "platinum" ? 0.9 : 0.72);
-              messageRef.current = `${cargoData[nearbyCargo.kind].name} acquired. Momentum is now a group project.`;
+              messageRef.current = `${cargoData[nearbyCargo.kind].name} acquired // ${cargoData[
+                nearbyCargo.kind
+              ].structure}. Momentum is now a group project.`;
               sound("pickup");
             } else if (
               astronaut.position.distanceTo(SHIP_POSITION) < 7.2 &&
@@ -2322,10 +2484,10 @@ export function MoonGoonsGame() {
           (deposit) =>
             deposit.state !== "hidden" &&
             deposit.state !== "secured" &&
+            deposit.state !== "broken" &&
             deposit.id !== carryingRef.current,
         );
         const nearestTracked = trackedSignals
-          .filter((deposit) => deposit.state !== "secured")
           .sort(
             (a, b) =>
               a.position.distanceTo(astronaut.position) -
@@ -2367,7 +2529,9 @@ export function MoonGoonsGame() {
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
         ) {
-          prompt = `E · PICK UP ${cargoData[nearbyCargo.kind].name.toUpperCase()}`;
+          prompt = `E · PICK UP ${cargoData[
+            nearbyCargo.kind
+          ].name.toUpperCase()} · ${cargoData[nearbyCargo.kind].structure}`;
         } else if (
           nearbySignal &&
           nearbySignal.position.distanceTo(astronaut.position) < 3
@@ -2443,6 +2607,8 @@ export function MoonGoonsGame() {
           repairProgress: repairProgressRef.current,
           repairsCompleted: repairsCompletedRef.current,
           airmailDeliveries: airmailDeliveriesRef.current,
+          cargoBounces: cargoBouncesRef.current,
+          brokenSamples: brokenSamplesRef.current,
           missionSeed: missionSeedRef.current,
           suitIntegrity: suitIntegrityRef.current,
           downed: downedRef.current,
@@ -2450,6 +2616,7 @@ export function MoonGoonsGame() {
           suitRecoveries: suitRecoveriesRef.current,
           carrying: held ? cargoData[held.kind].name : null,
           cargoCondition: held ? held.condition : null,
+          cargoStructure: held ? cargoData[held.kind].structure : null,
           message: messageRef.current,
           scanCooldown: scanCooldownRef.current,
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
@@ -2514,6 +2681,8 @@ export function MoonGoonsGame() {
       repairProgress: 0,
       repairsCompleted: 0,
       airmailDeliveries: 0,
+      cargoBounces: 0,
+      brokenSamples: 0,
       missionSeed: missionSeedRef.current,
       suitIntegrity: 100,
       downed: false,
@@ -2521,6 +2690,7 @@ export function MoonGoonsGame() {
       suitRecoveries: 0,
       carrying: null,
       cargoCondition: null,
+      cargoStructure: null,
       message: messageRef.current,
       scanCooldown: 0,
       depositsSecured: 0,
@@ -2552,7 +2722,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 015 // MISSION DIRECTOR</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 016 // MISSION DIRECTOR</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -2633,8 +2803,13 @@ export function MoonGoonsGame() {
                 airmail
               </span>
               <span>
+                {snapshot.cargoBounces} cargo bounces · {snapshot.brokenSamples} broken
+              </span>
+              <span>
                 {snapshot.carrying
-                  ? `${snapshot.carrying} // ${Math.round((snapshot.cargoCondition ?? 1) * 100)}%`
+                  ? `${snapshot.carrying} // ${Math.round(
+                      (snapshot.cargoCondition ?? 1) * 100,
+                    )}% // ${snapshot.cargoStructure}`
                   : "Hands regrettably empty"}
               </span>
               <span className={snapshot.time <= 55 ? styles.stormActive : ""}>
@@ -2811,8 +2986,8 @@ export function MoonGoonsGame() {
             </h1>
             <p className={styles.lede}>
               Explore a fully 3D Practice Moon, find buried material, manage your drill,
-              dodge unstable pressure vents, and haul—or throw—¢{CONTRACT_TARGET} back
-              to the ship&apos;s glowing cargo receiver.
+              dodge unstable pressure vents, and haul—or ricochet—¢{CONTRACT_TARGET}
+              back to the ship&apos;s glowing cargo receiver.
             </p>
             <div className={styles.briefGrid}>
               <div>
@@ -2828,7 +3003,7 @@ export function MoonGoonsGame() {
               <div>
                 <span>03</span>
                 <strong>SURVIVE</strong>
-                <p>Coral warnings mean move. Shift+E can airmail cargo into the ship.</p>
+                <p>Shift+E throws cargo. Samples bounce, degrade, and fragile vials shatter.</p>
               </div>
             </div>
             <button type="button" onClick={resetMission}>
@@ -2870,6 +3045,14 @@ export function MoonGoonsGame() {
               <div>
                 <span>AIRMAIL DELIVERIES</span>
                 <strong>{snapshot.airmailDeliveries}</strong>
+              </div>
+              <div>
+                <span>CARGO BOUNCES</span>
+                <strong>{snapshot.cargoBounces}</strong>
+              </div>
+              <div>
+                <span>SAMPLES BROKEN</span>
+                <strong>{snapshot.brokenSamples}</strong>
               </div>
             </div>
             <button type="button" onClick={resetMission}>
