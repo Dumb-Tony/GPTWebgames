@@ -2986,7 +2986,7 @@ export function MoonGoonsGame() {
             </h1>
             <p className={styles.lede}>
               Explore a fully 3D Practice Moon, find buried material, manage your drill,
-              dodge unstable pressure vents, and haul—or ricochet—¢{CONTRACT_TARGET}
+              dodge unstable pressure vents, and haul—or ricochet—¢{CONTRACT_TARGET}{" "}
               back to the ship&apos;s glowing cargo receiver.
             </p>
             <div className={styles.briefGrid}>
