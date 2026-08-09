@@ -6,6 +6,9 @@ export const SUIT_REBOOT_RATE = 44;
 export const SUIT_REBOOT_DECAY = 28;
 export const CARGO_RECEIVER_RADIUS = 2.35;
 export const CARGO_RECEIVER_MAX_HEIGHT = 4.8;
+export const TETHER_LOCK_RANGE = 16;
+export const TETHER_BREAK_RANGE = 19;
+export const TETHER_MAX_OWNERS = 2;
 
 export type ControlSettings = {
   lookSensitivity: number;
@@ -287,6 +290,30 @@ export function calculateBankShotBonus(
   if (bounceCount <= 0) return 0;
   const multiplier = Math.min(0.32, 0.08 + bounceCount * 0.06);
   return Math.round(calculateCargoValue(kind, condition) * multiplier);
+}
+
+export function calculateTetherPull(
+  kind: CargoKind,
+  distance: number,
+  tetherCount: number,
+) {
+  const safeDistance = Math.max(0, Number.isFinite(distance) ? distance : 0);
+  const safeCount = Math.min(TETHER_MAX_OWNERS, Math.max(0, Math.trunc(tetherCount)));
+  const teamLift = safeCount >= 2;
+  const denseMultiplier = kind === "platinum" ? (teamLift ? 1.35 : 0.58) : 1;
+  const extension = Math.max(0, safeDistance - 3.6);
+
+  return {
+    breaks: safeDistance > TETHER_BREAK_RANGE,
+    teamLift,
+    tension: Math.min(1, extension / (TETHER_BREAK_RANGE - 3.6)),
+    pullAcceleration:
+      safeCount === 0 ? 0 : Math.min(18, extension * 2.25) * denseMultiplier,
+    maxSpeed:
+      safeCount === 0
+        ? 0
+        : (teamLift ? 7.2 : 5.2) * (kind === "platinum" && !teamLift ? 0.72 : 1),
+  };
 }
 
 export function canAirmailCargo(

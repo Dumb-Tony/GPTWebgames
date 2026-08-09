@@ -25,6 +25,9 @@ import {
   DEFAULT_CONTROL_SETTINGS,
   DRILL_JAM_WEAR,
   MISSION_SECONDS,
+  TETHER_BREAK_RANGE,
+  TETHER_LOCK_RANGE,
+  TETHER_MAX_OWNERS,
   advanceSuitRecovery,
   applySuitDamage as calculateSuitDamage,
   canAirmailCargo,
@@ -32,6 +35,7 @@ import {
   calculateCargoBounce,
   calculateCargoImpact,
   calculateCargoValue,
+  calculateTetherPull,
   cargoData,
   createMissionDepositDefinitions,
   formatSignalBearing,
@@ -82,6 +86,7 @@ type DepositRuntime = {
   isBallistic: boolean;
   bounceCount: number;
   ownerId: string | null;
+  tetherOwnerIds: string[];
   group: THREE.Group;
   shell: THREE.Object3D;
   core: THREE.Object3D;
@@ -136,6 +141,9 @@ type Snapshot = {
   signalsTracked: number;
   nearestSignalDistance: number | null;
   nearestSignalBearing: number | null;
+  tetheredCargo: string | null;
+  tetherDistance: number | null;
+  tetherTeamLift: boolean;
 };
 
 const palette = {
@@ -675,6 +683,7 @@ function createDeposit(
     isBallistic: false,
     bounceCount: 0,
     ownerId: null,
+    tetherOwnerIds: [],
     group,
     shell,
     core,
@@ -1163,6 +1172,9 @@ export function MoonGoonsGame() {
     signalsTracked: 0,
     nearestSignalDistance: null,
     nearestSignalBearing: null,
+    tetheredCargo: null,
+    tetherDistance: null,
+    tetherTeamLift: false,
   });
 
   const updateControlSettings = useCallback((nextSettings: ControlSettings) => {
@@ -1538,6 +1550,7 @@ export function MoonGoonsGame() {
         inputMask: number;
       }
     >();
+    const tetherLines = new Map<string, THREE.Line>();
 
     let deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
       (definition) => createDeposit(definition),
@@ -1663,6 +1676,7 @@ export function MoonGoonsGame() {
       deposit.isBallistic = false;
       deposit.bounceCount = 0;
       deposit.ownerId = null;
+      deposit.tetherOwnerIds = [];
       deposit.group.position.y = 0.22;
       deposit.group.scale.setScalar(1);
       deposit.shell.visible = false;
@@ -1685,6 +1699,66 @@ export function MoonGoonsGame() {
         (definition) => createDeposit(definition),
       );
       deposits.forEach((deposit) => scene.add(deposit.group));
+    };
+
+    const tetherOwnerPosition = (ownerId: string) => {
+      const session = crewSessionRef.current;
+      const localOwnerId = session?.memberId ?? "solo";
+      if (ownerId === localOwnerId) return astronaut.position.clone();
+      const member = crewRoomRef.current?.members.find(
+        (candidate) => candidate.id === ownerId,
+      );
+      return member ? new THREE.Vector3(member.x, member.y, member.z) : null;
+    };
+
+    const toggleTether = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      const attached = deposits.find((deposit) =>
+        deposit.tetherOwnerIds.includes(ownerId),
+      );
+      if (attached) {
+        attached.tetherOwnerIds = attached.tetherOwnerIds.filter(
+          (candidate) => candidate !== ownerId,
+        );
+        messageRef.current = `${ownerName} released the ${cargoData[
+          attached.kind
+        ].name} tether. Momentum has resumed negotiations.`;
+        return;
+      }
+
+      if (deposits.some((deposit) => deposit.ownerId === ownerId)) {
+        messageRef.current = `${ownerName} cannot fire a tether while carrying cargo.`;
+        return;
+      }
+
+      const target = deposits
+        .filter(
+          (deposit) =>
+            deposit.state === "cargo" &&
+            deposit.ownerId === null &&
+            deposit.tetherOwnerIds.length < TETHER_MAX_OWNERS,
+        )
+        .sort(
+          (a, b) =>
+            a.group.position.distanceTo(ownerPosition) -
+            b.group.position.distanceTo(ownerPosition),
+        )[0];
+      if (!target || target.group.position.distanceTo(ownerPosition) > TETHER_LOCK_RANGE) {
+        messageRef.current = `${ownerName} found no loose cargo within tether range.`;
+        return;
+      }
+
+      target.tetherOwnerIds.push(ownerId);
+      const teamLift = target.tetherOwnerIds.length >= 2;
+      messageRef.current = teamLift
+        ? `TEAM LIFT ONLINE! ${ownerName} joined the ${cargoData[
+            target.kind
+          ].name} haul. Dense-object privileges unlocked.`
+        : `${ownerName} tethered ${cargoData[target.kind].name}. Move together; cable snaps at ${TETHER_BREAK_RANGE}m.`;
+      sound("pickup");
     };
 
     const applySuitDamage = (amount: number) => {
@@ -1713,6 +1787,7 @@ export function MoonGoonsGame() {
         held.isBallistic = false;
         held.bounceCount = 0;
         held.ownerId = null;
+        held.tetherOwnerIds = [];
         carryingRef.current = null;
       }
       messageRef.current =
@@ -1807,6 +1882,39 @@ export function MoonGoonsGame() {
           messageRef.current = "MISSION LEAD PINGED THEIR LOCATION. Confidence is implied.";
         }
         sound("scan");
+      }
+      const quickPingTypes: Partial<Record<string, CrewActionType>> = {
+        Digit1: "ping_help",
+        Digit2: "ping_cargo",
+        Digit3: "ping_danger",
+        Digit4: "ping_ship",
+      };
+      const quickPing = quickPingTypes[event.code];
+      if (quickPing && !event.repeat && crewSessionRef.current) {
+        const pingLabels: Record<string, string> = {
+          ping_help: "NEEDS HELP",
+          ping_cargo: "MARKED CARGO",
+          ping_danger: "MARKED DANGER",
+          ping_ship: "CALLED RETURN TO SHIP",
+        };
+        if (crewSessionRef.current.role === "guest") queueCrewAction(quickPing);
+        else {
+          messageRef.current = `${crewSessionRef.current.name} ${pingLabels[quickPing]}.`;
+        }
+        sound(quickPing === "ping_danger" ? "warning" : "scan");
+      }
+      if (event.code === "KeyT" && !event.repeat && phaseRef.current === "active") {
+        const session = crewSessionRef.current;
+        if (session?.role === "guest") {
+          queueCrewAction("tether");
+          messageRef.current = "Tether request sent to mission lead authority.";
+        } else {
+          toggleTether(
+            session?.memberId ?? "solo",
+            session?.name ?? "SOLO GOON",
+            astronaut.position,
+          );
+        }
       }
       keysRef.current.add(event.code);
     };
@@ -1942,6 +2050,7 @@ export function MoonGoonsGame() {
         deposit.isBallistic = incoming.isBallistic;
         deposit.bounceCount = incoming.bounceCount;
         deposit.ownerId = incoming.ownerId;
+        deposit.tetherOwnerIds = incoming.tetherOwnerIds ?? [];
         setDepositVisualState(deposit);
         if (incoming.ownerId === localMemberId) carryingRef.current = incoming.id;
       });
@@ -1980,8 +2089,21 @@ export function MoonGoonsGame() {
           return;
         }
 
-        if (action.type === "ping") {
-          messageRef.current = `${member.name} PINGED THEIR LOCATION. This may indicate teamwork or panic.`;
+        if (action.type.startsWith("ping")) {
+          const pingMessages: Record<string, string> = {
+            ping: "PINGED THEIR LOCATION",
+            ping_help: "NEEDS HELP",
+            ping_cargo: "MARKED CARGO",
+            ping_danger: "MARKED DANGER",
+            ping_ship: "CALLED RETURN TO SHIP",
+          };
+          messageRef.current = `${member.name} ${pingMessages[action.type]}.`;
+          if (action.type === "ping_danger") sound("warning");
+          return;
+        }
+
+        if (action.type === "tether") {
+          toggleTether(member.id, member.name, memberPosition);
           return;
         }
 
@@ -1994,6 +2116,7 @@ export function MoonGoonsGame() {
             const earned = calculateCargoValue(held.kind, held.condition);
             held.state = "secured";
             held.ownerId = null;
+            held.tetherOwnerIds = [];
             held.group.visible = false;
             held.velocity.set(0, 0, 0);
             held.isBallistic = false;
@@ -2012,6 +2135,7 @@ export function MoonGoonsGame() {
           held.group.position.copy(memberPosition).addScaledVector(forward, 2.3);
           held.group.position.y = action.type === "throw" ? 2.4 + member.y : 0.62;
           held.ownerId = null;
+          held.tetherOwnerIds = [];
           held.group.scale.setScalar(1);
           if (action.type === "throw") {
             held.velocity.copy(forward).multiplyScalar(cargoData[held.kind].throwSpeed);
@@ -2043,6 +2167,7 @@ export function MoonGoonsGame() {
           )[0];
         if (nearbyCargo && nearbyCargo.group.position.distanceTo(memberPosition) < 3.2) {
           nearbyCargo.ownerId = member.id;
+          nearbyCargo.tetherOwnerIds = [];
           nearbyCargo.velocity.set(0, 0, 0);
           nearbyCargo.isBallistic = false;
           nearbyCargo.bounceCount = 0;
@@ -2649,6 +2774,47 @@ export function MoonGoonsGame() {
             carryingRef.current !== deposit.id &&
             deposit.ownerId === null
           ) {
+            const validTetherOwners = deposit.tetherOwnerIds.filter((ownerId) => {
+              const ownerPosition = tetherOwnerPosition(ownerId);
+              if (!ownerPosition) return false;
+              const distance = deposit.group.position.distanceTo(ownerPosition);
+              if (!calculateTetherPull(deposit.kind, distance, deposit.tetherOwnerIds.length).breaks) {
+                return true;
+              }
+              const ownerName =
+                crewRoomRef.current?.members.find((member) => member.id === ownerId)
+                  ?.name ?? "A GOON";
+              messageRef.current = `${ownerName}'S TETHER SNAPPED at ${Math.round(
+                distance,
+              )}m. Cable complexity remains bounded.`;
+              sound("warning");
+              return false;
+            });
+            deposit.tetherOwnerIds = validTetherOwners;
+            const tetherCount = validTetherOwners.length;
+            const tetherState = calculateTetherPull(
+              deposit.kind,
+              validTetherOwners.reduce((largest, ownerId) => {
+                const ownerPosition = tetherOwnerPosition(ownerId);
+                return ownerPosition
+                  ? Math.max(largest, deposit.group.position.distanceTo(ownerPosition))
+                  : largest;
+              }, 0),
+              tetherCount,
+            );
+            validTetherOwners.forEach((ownerId) => {
+              const ownerPosition = tetherOwnerPosition(ownerId);
+              if (!ownerPosition) return;
+              const pullTarget = ownerPosition.clone().add(new THREE.Vector3(0, 1, 0));
+              const pullDirection = pullTarget.sub(deposit.group.position);
+              const distance = pullDirection.length();
+              if (distance <= 0.01) return;
+              const pull = calculateTetherPull(deposit.kind, distance, tetherCount);
+              deposit.velocity.addScaledVector(
+                pullDirection.normalize(),
+                pull.pullAcceleration * dt,
+              );
+            });
             if (deposit.isBallistic) {
               deposit.velocity.y -= MOON_GRAVITY * dt;
               deposit.group.position.addScaledVector(deposit.velocity, dt);
@@ -2690,6 +2856,7 @@ export function MoonGoonsGame() {
                 deposit.velocity.set(0, 0, 0);
                 deposit.isBallistic = false;
                 deposit.bounceCount = 0;
+                deposit.tetherOwnerIds = [];
                 scoreRef.current += earned + bankBonus;
                 airmailDeliveriesRef.current += 1;
                 if (bankBounces > 0) {
@@ -2759,7 +2926,29 @@ export function MoonGoonsGame() {
                   }
                 }
               }
+            } else if (tetherCount > 0) {
+              deposit.velocity.y = 0;
+              deposit.velocity.multiplyScalar(Math.exp(-2.4 * dt));
+              if (deposit.velocity.length() > tetherState.maxSpeed) {
+                deposit.velocity.setLength(tetherState.maxSpeed);
+              }
+              deposit.group.position.addScaledVector(deposit.velocity, dt);
+              const surfaceRadius = Math.hypot(
+                deposit.group.position.x,
+                deposit.group.position.z,
+              );
+              if (surfaceRadius > MOON_RADIUS - 1.2) {
+                const boundaryScale = (MOON_RADIUS - 1.2) / surfaceRadius;
+                deposit.group.position.x *= boundaryScale;
+                deposit.group.position.z *= boundaryScale;
+                deposit.velocity.multiplyScalar(0.3);
+              }
+              deposit.group.position.y = tetherState.teamLift
+                ? 1.02 + Math.sin(now * 0.004 + index) * 0.08
+                : 0.65;
+              deposit.group.rotation.x += dt * deposit.velocity.length() * 0.6;
             } else {
+              deposit.velocity.multiplyScalar(Math.exp(-5 * dt));
               deposit.group.position.y = 0.65 + Math.sin(now * 0.0025 + index) * 0.12;
             }
           }
@@ -2783,6 +2972,58 @@ export function MoonGoonsGame() {
             deposit.group.position.set(0, 0, 0);
             deposit.group.scale.setScalar(deposit.kind === "platinum" ? 0.9 : 0.72);
           }
+        });
+
+        const activeTetherLines = new Set<string>();
+        deposits.forEach((deposit) => {
+          if (deposit.state !== "cargo") return;
+          const end = deposit.group.getWorldPosition(new THREE.Vector3());
+          deposit.tetherOwnerIds.forEach((ownerId) => {
+            const localOwnerId = session?.memberId ?? "solo";
+            let start: THREE.Vector3 | null = null;
+            if (ownerId === localOwnerId) {
+              start = astronaut.position.clone().add(new THREE.Vector3(0, 2.05, 0));
+            } else {
+              const remote = remoteAstronauts.get(ownerId);
+              if (remote) {
+                start = remote.group
+                  .getWorldPosition(new THREE.Vector3())
+                  .add(new THREE.Vector3(0, 2.05, 0));
+              }
+            }
+            if (!start) return;
+            activeTetherLines.add(ownerId);
+            let line = tetherLines.get(ownerId);
+            if (!line) {
+              const colorIndex = crewRoomRef.current?.members.find(
+                (member) => member.id === ownerId,
+              )?.colorIndex;
+              line = new THREE.Line(
+                new THREE.BufferGeometry().setFromPoints([start, end]),
+                new THREE.LineBasicMaterial({
+                  color:
+                    colorIndex === undefined
+                      ? palette.yellow
+                      : crewColor(colorIndex).hex,
+                  transparent: true,
+                  opacity: 0.9,
+                  depthWrite: false,
+                }),
+              );
+              tetherLines.set(ownerId, line);
+              scene.add(line);
+            }
+            line.geometry.setFromPoints([start, end]);
+            (line.material as THREE.LineBasicMaterial).opacity =
+              0.68 + Math.sin(now * 0.018) * 0.2;
+          });
+        });
+        tetherLines.forEach((line, ownerId) => {
+          if (activeTetherLines.has(ownerId)) return;
+          line.removeFromParent();
+          line.geometry.dispose();
+          (line.material as THREE.Material).dispose();
+          tetherLines.delete(ownerId);
         });
 
         const nearestDrillable = deposits
@@ -2929,6 +3170,7 @@ export function MoonGoonsGame() {
               if (astronaut.position.distanceTo(CARGO_RECEIVER_POSITION) < 3.8) {
                 held.state = "secured";
                 held.ownerId = null;
+                held.tetherOwnerIds = [];
                 held.group.visible = false;
                 const earned = calculateCargoValue(held.kind, held.condition);
                 scoreRef.current += earned;
@@ -2966,11 +3208,13 @@ export function MoonGoonsGame() {
                   held.isBallistic = true;
                   held.bounceCount = 0;
                   held.ownerId = null;
+                  held.tetherOwnerIds = [];
                 } else {
                   held.velocity.set(0, 0, 0);
                   held.isBallistic = false;
                   held.bounceCount = 0;
                   held.ownerId = null;
+                  held.tetherOwnerIds = [];
                 }
                 carryingRef.current = null;
                 messageRef.current = throwing
@@ -2983,7 +3227,12 @@ export function MoonGoonsGame() {
             }
           } else {
             const nearbyCargo = deposits
-              .filter((deposit) => deposit.state === "cargo")
+              .filter(
+                (deposit) =>
+                  deposit.state === "cargo" &&
+                  deposit.ownerId === null &&
+                  !deposit.isBallistic,
+              )
               .sort(
                 (a, b) =>
                   a.position.distanceTo(astronaut.position) -
@@ -2995,6 +3244,7 @@ export function MoonGoonsGame() {
             ) {
               carryingRef.current = nearbyCargo.id;
               nearbyCargo.ownerId = session?.memberId ?? "solo";
+              nearbyCargo.tetherOwnerIds = [];
               nearbyCargo.velocity.set(0, 0, 0);
               nearbyCargo.isBallistic = false;
               nearbyCargo.bounceCount = 0;
@@ -3212,10 +3462,24 @@ export function MoonGoonsGame() {
       if (hudTimer >= 0.09) {
         hudTimer = 0;
         const held = deposits.find((deposit) => deposit.id === carryingRef.current);
+        const hudOwnerId = session?.memberId ?? "solo";
+        const tethered = deposits.find((deposit) =>
+          deposit.tetherOwnerIds.includes(hudOwnerId),
+        );
+        const tetherDistance = tethered
+          ? tethered.group
+              .getWorldPosition(new THREE.Vector3())
+              .distanceTo(astronaut.position)
+          : null;
         const homeDistance = astronaut.position.distanceTo(SHIP_POSITION);
         const receiverDistance = astronaut.position.distanceTo(CARGO_RECEIVER_POSITION);
         const nearbyCargo = deposits
-          .filter((deposit) => deposit.state === "cargo")
+          .filter(
+            (deposit) =>
+              deposit.state === "cargo" &&
+              deposit.ownerId === null &&
+              !deposit.isBallistic,
+          )
           .sort(
             (a, b) =>
               a.position.distanceTo(astronaut.position) -
@@ -3270,7 +3534,11 @@ export function MoonGoonsGame() {
             );
           }
         }
-        let prompt = "Q · SCAN FOR VALUABLE MATERIAL";
+        let prompt = tethered
+          ? `T · RELEASE ${cargoData[tethered.kind].name.toUpperCase()} · ${Math.round(
+              tetherDistance ?? 0,
+            )}m${tethered.tetherOwnerIds.length >= 2 ? " · TEAM LIFT" : ""}`
+          : "Q · SCAN FOR VALUABLE MATERIAL";
         if (held) {
           prompt =
             receiverDistance < 3.8
@@ -3374,6 +3642,7 @@ export function MoonGoonsGame() {
                 isBallistic: deposit.isBallistic,
                 bounceCount: deposit.bounceCount,
                 ownerId: deposit.ownerId,
+                tetherOwnerIds: deposit.tetherOwnerIds,
               };
             }),
             stats: {
@@ -3423,6 +3692,9 @@ export function MoonGoonsGame() {
           signalsTracked: trackedSignals.length,
           nearestSignalDistance,
           nearestSignalBearing,
+          tetheredCargo: tethered ? cargoData[tethered.kind].name : null,
+          tetherDistance,
+          tetherTeamLift: (tethered?.tetherOwnerIds.length ?? 0) >= 2,
         });
       }
 
@@ -3506,6 +3778,9 @@ export function MoonGoonsGame() {
       signalsTracked: 0,
       nearestSignalDistance: null,
       nearestSignalBearing: null,
+      tetheredCargo: null,
+      tetherDistance: null,
+      tetherTeamLift: false,
     });
     requestMouseLock();
     sound("launch");
@@ -3528,7 +3803,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 018 // CREW LINK</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 019 // TEAM HAUL</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -3723,6 +3998,20 @@ export function MoonGoonsGame() {
                     }`}
               </strong>
             </div>
+            <div
+              className={`${styles.tetherStatus} ${
+                snapshot.tetherTeamLift ? styles.tetherTeamLift : ""
+              }`}
+            >
+              <span>TETHER GUN T</span>
+              <strong>
+                {snapshot.tetheredCargo
+                  ? snapshot.tetherTeamLift
+                    ? `TEAM LIFT · ${Math.round(snapshot.tetherDistance ?? 0)}m`
+                    : `LOCKED · ${Math.round(snapshot.tetherDistance ?? 0)}m`
+                  : "READY · 16m"}
+              </strong>
+            </div>
             <div className={styles.fuelLabel}>
               <span>EVA THRUSTER</span>
               <strong>{Math.round(snapshot.thrusterFuel)}%</strong>
@@ -3761,11 +4050,21 @@ export function MoonGoonsGame() {
               <kbd>R</kbd>
               <span>REPAIR JAM</span>
             </div>
+            <div>
+              <kbd>T</kbd>
+              <span>TETHER / RELEASE</span>
+            </div>
             {crewSession && (
-              <div>
-                <kbd>P</kbd>
-                <span>CREW PING</span>
-              </div>
+              <>
+                <div>
+                  <kbd>P</kbd>
+                  <span>LOCATION PING</span>
+                </div>
+                <div>
+                  <kbd>1–4</kbd>
+                  <span>HELP / CARGO / DANGER / SHIP</span>
+                </div>
+              </>
             )}
             <div>
               <kbd>E / ⇧E</kbd>
@@ -3803,7 +4102,7 @@ export function MoonGoonsGame() {
               <span>S.P.A.C.E.</span>
               SCIENTIFIC PROCUREMENT AND COLLECTION ENTERPRISE
             </div>
-            <p className={styles.kicker}>MULTIPLAYER CORE 6A // CREW LINK TRANSPORT SPIKE</p>
+            <p className={styles.kicker}>COOPERATION SYSTEMS 7A // TEAM HAUL FIELD TEST</p>
             <h1>
               SUIT UP.
               <br />
@@ -3811,8 +4110,9 @@ export function MoonGoonsGame() {
             </h1>
             <p className={styles.lede}>
               Run the Practice Moon solo, or open a room for up to four scientists.
-              Crew movement, scanning, drilling, cargo ownership, throws, deposits, and
-              mission results now share one host-authoritative contract.
+              Crew movement, cargo, and mission results share one contract. Fire a tether
+              with T to tow loose samples; two scientists can team-lift dense cargo without
+              relying on voice chat.
             </p>
             <div className={styles.briefGrid}>
               <div>
@@ -3827,8 +4127,8 @@ export function MoonGoonsGame() {
               </div>
               <div>
                 <span>03</span>
-                <strong>THROW</strong>
-                <p>The arc predicts first impact. Ricochet into the bay for a bank-shot bonus.</p>
+                <strong>TEAM HAUL</strong>
+                <p>Press T near cargo. A second tether lifts it and makes heavy cores easier to tow.</p>
               </div>
             </div>
             <CrewLobby

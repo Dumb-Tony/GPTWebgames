@@ -85,8 +85,8 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /TRY NOT TO FLOAT/);
   assert.match(html, /SOLO FIELD TEST/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
-  assert.match(html, /MULTIPLAYER CORE 6A \/\/ CREW LINK TRANSPORT SPIKE/);
-  assert.match(html, /BUILD 018/);
+  assert.match(html, /COOPERATION SYSTEMS 7A \/\/ TEAM HAUL FIELD TEST/);
+  assert.match(html, /BUILD 019/);
   assert.match(html, /HOST CREW/);
   assert.match(html, /JOIN CREW/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);

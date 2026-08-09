@@ -2,6 +2,10 @@
 
 import { useState } from "react";
 import {
+  CREW_INPUT_DOWNED,
+  CREW_INPUT_DRILL,
+  CREW_INPUT_MOVING,
+  CREW_INPUT_THRUSTER,
   CREW_MAX_MEMBERS,
   crewColor,
   normalizeCrewName,
@@ -11,6 +15,14 @@ import {
   type CrewSession,
 } from "./crewNetwork";
 import styles from "./game.module.css";
+
+function crewStatus(inputMask: number) {
+  if ((inputMask & CREW_INPUT_DOWNED) !== 0) return "SAFE MODE";
+  if ((inputMask & CREW_INPUT_DRILL) !== 0) return "DRILLING";
+  if ((inputMask & CREW_INPUT_THRUSTER) !== 0) return "BOOSTING";
+  if ((inputMask & CREW_INPUT_MOVING) !== 0) return "MOVING";
+  return "READY";
+}
 
 type CrewLobbyProps = {
   session: CrewSession | null;
@@ -48,7 +60,13 @@ export function CrewLobby({
       return "GOON";
     }
   });
-  const [code, setCode] = useState("");
+  const [code, setCode] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return normalizeRoomCode(new URLSearchParams(window.location.search).get("room") ?? "");
+  });
+  const [inviteStatus, setInviteStatus] = useState<"idle" | "copied" | "failed">(
+    "idle",
+  );
 
   const saveName = () => {
     const normalized = normalizeCrewName(name);
@@ -63,6 +81,15 @@ export function CrewLobby({
 
   if (session) {
     const members = room?.members ?? [];
+    const copyInvite = async () => {
+      const invite = `${window.location.origin}/?room=${session.roomCode}`;
+      try {
+        await window.navigator.clipboard.writeText(invite);
+        setInviteStatus("copied");
+      } catch {
+        setInviteStatus("failed");
+      }
+    };
     return (
       <section className={styles.crewLobby} aria-label="Crew lobby">
         <div className={styles.crewLobbyHeader}>
@@ -70,9 +97,18 @@ export function CrewLobby({
             <span>CREW LINK // {session.role.toUpperCase()}</span>
             <strong>{session.roomCode}</strong>
           </div>
-          <button type="button" onClick={onLeave} disabled={busy}>
-            LEAVE
-          </button>
+          <div className={styles.crewLobbyButtons}>
+            <button type="button" onClick={() => void copyInvite()} disabled={busy}>
+              {inviteStatus === "copied"
+                ? "INVITE COPIED"
+                : inviteStatus === "failed"
+                  ? "COPY FAILED"
+                  : "COPY INVITE"}
+            </button>
+            <button type="button" onClick={onLeave} disabled={busy}>
+              LEAVE
+            </button>
+          </div>
         </div>
         <p className={styles.crewInvite}>
           Send this five-character room code to up to {CREW_MAX_MEMBERS - 1} other
@@ -215,7 +251,10 @@ export function CrewRoster({
         <div className={styles.crewRosterMember} key={member.id}>
           <i style={{ background: crewColor(member.colorIndex).css }} />
           <span>{member.name}</span>
-          <small>{member.id === session.memberId ? "YOU" : member.role.toUpperCase()}</small>
+          <small>
+            {member.id === session.memberId ? "YOU · " : ""}
+            {crewStatus(member.inputMask)}
+          </small>
         </div>
       ))}
       <button type="button" onClick={onLeave}>LEAVE CREW</button>

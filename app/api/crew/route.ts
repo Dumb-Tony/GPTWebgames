@@ -13,7 +13,17 @@ import {
   type CrewRoomPhase,
 } from "../../game/crewNetwork";
 
-const actionTypes = new Set<CrewActionType>(["scan", "interact", "throw", "ping"]);
+const actionTypes = new Set<CrewActionType>([
+  "scan",
+  "interact",
+  "throw",
+  "tether",
+  "ping",
+  "ping_help",
+  "ping_cargo",
+  "ping_danger",
+  "ping_ship",
+]);
 const roomPhases = new Set<CrewRoomPhase>([
   "lobby",
   "active",

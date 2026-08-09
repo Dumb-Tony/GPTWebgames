@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   CONTRACT_TARGET,
   DEFAULT_CONTROL_SETTINGS,
+  TETHER_BREAK_RANGE,
   advanceSuitRecovery,
   applySuitDamage,
   canAirmailCargo,
@@ -11,6 +12,7 @@ import {
   calculateCargoImpact,
   calculateCargoImpactCondition,
   calculateCargoValue,
+  calculateTetherPull,
   createMissionDepositDefinitions,
   formatSignalBearing,
   formatTime,
@@ -65,6 +67,26 @@ test("crew colors wrap and presence expiration has a clear boundary", () => {
   const now = Date.parse("2026-08-09T12:00:12.000Z");
   assert.equal(isCrewMemberFresh("2026-08-09T12:00:00.000Z", now), true);
   assert.equal(isCrewMemberFresh("2026-08-09T11:59:59.999Z", now), false);
+});
+
+test("tether pull is capped, snaps predictably, and rewards a second hauler", () => {
+  const soloDense = calculateTetherPull("platinum", 12, 1);
+  const teamDense = calculateTetherPull("platinum", 12, 2);
+  assert.equal(soloDense.breaks, false);
+  assert.equal(soloDense.teamLift, false);
+  assert.equal(teamDense.teamLift, true);
+  assert.ok(teamDense.pullAcceleration > soloDense.pullAcceleration);
+  assert.ok(teamDense.maxSpeed > soloDense.maxSpeed);
+  assert.ok(teamDense.pullAcceleration <= 18 * 1.35);
+  assert.equal(
+    calculateTetherPull("ferric", TETHER_BREAK_RANGE, 1).breaks,
+    false,
+  );
+  assert.equal(
+    calculateTetherPull("ferric", TETHER_BREAK_RANGE + 0.01, 1).breaks,
+    true,
+  );
+  assert.equal(calculateTetherPull("vial", 12, 0).pullAcceleration, 0);
 });
 
 test("mission timer formatting is stable at boundaries", () => {

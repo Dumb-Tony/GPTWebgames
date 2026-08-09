@@ -2203,6 +2203,20 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - A player without voice can request help and identify a target.
 - Tools can exchange ownership safely.
 
+**Prototype status — Build 019**
+
+- Added a host-authoritative tether gun with a 16m acquisition radius, a 19m clean
+  break boundary, capped cargo velocity, and a maximum of two cables per sample.
+- A second tether activates team lift, raises cargo clear of the surface, and offsets
+  the dense Platinum Core's solo hauling penalty. Each player can own only one tether.
+- Added four immediate voice-free callouts for help, cargo, danger, and ship return,
+  while retaining a generic location ping.
+- Crew status now reports ready, moving, boosting, drilling, or suit safe mode, and
+  host invite links prefill the temporary room code for collaborators.
+- Milestone 7 is not complete: teammate repair/rescue, a radial ping presentation,
+  physical tool ownership transfer, and repeated adverse-network cooperation tests
+  remain required before exit.
+
 ## Milestone 8: Hub and Progression
 
 **Deliverables**

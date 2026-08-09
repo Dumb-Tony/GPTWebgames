@@ -16,7 +16,16 @@ export const CREW_COLORS = [
 
 export type CrewRole = "host" | "guest";
 export type CrewRoomPhase = "lobby" | "active" | "success" | "failed" | "closed";
-export type CrewActionType = "scan" | "interact" | "throw" | "ping";
+export type CrewActionType =
+  | "scan"
+  | "interact"
+  | "throw"
+  | "tether"
+  | "ping"
+  | "ping_help"
+  | "ping_cargo"
+  | "ping_danger"
+  | "ping_ship";
 
 export type CrewSession = {
   roomCode: string;
@@ -59,6 +68,7 @@ export type CrewDepositState = {
   isBallistic: boolean;
   bounceCount: number;
   ownerId: string | null;
+  tetherOwnerIds: string[];
 };
 
 export type CrewMissionState = {
