@@ -83,10 +83,12 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /<title>Moon Goons — Practice Moon \| Moon Goons<\/title>/i);
   assert.match(html, /SUIT UP/);
   assert.match(html, /TRY NOT TO FLOAT/);
-  assert.match(html, /ACCEPT LIABILITY \+ ENTER 3D/);
+  assert.match(html, /SOLO FIELD TEST/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
-  assert.match(html, /3D AESTHETIC VERTICAL SLICE \/\/ PRACTICE MOON/);
-  assert.match(html, /BUILD 017/);
+  assert.match(html, /MULTIPLAYER CORE 6A \/\/ CREW LINK TRANSPORT SPIKE/);
+  assert.match(html, /BUILD 018/);
+  assert.match(html, /HOST CREW/);
+  assert.match(html, /JOIN CREW/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -117,4 +119,15 @@ test("field-notes endpoint validates an empty report without touching storage", 
   assert.equal(response.status, 400);
   const payload = await response.json();
   assert.equal(payload.error, "Add your name or initials.");
+});
+
+test("crew endpoint validates an empty call sign without touching storage", async () => {
+  const response = await fetch(new URL("/api/crew", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "create", name: "" }),
+  });
+  assert.equal(response.status, 400);
+  const payload = await response.json();
+  assert.equal(payload.error, "Use a call sign with at least two characters.");
 });

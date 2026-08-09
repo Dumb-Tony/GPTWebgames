@@ -3,7 +3,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { ControlSettingsPanel } from "./ControlSettingsPanel";
+import { CrewLobby, CrewRoster } from "./CrewLobby";
 import { FieldNotes } from "./FieldNotes";
+import {
+  CREW_INPUT_DOWNED,
+  CREW_INPUT_DRILL,
+  CREW_INPUT_MOVING,
+  CREW_INPUT_THRUSTER,
+  CREW_SYNC_INTERVAL_MS,
+  DEFAULT_CREW_NETWORK_TUNING,
+  crewColor,
+  type CrewActionType,
+  type CrewLocalPresence,
+  type CrewMissionState,
+  type CrewNetworkTuning,
+  type CrewRoomSnapshot,
+  type CrewSession,
+} from "./crewNetwork";
 import {
   CONTRACT_TARGET,
   DEFAULT_CONTROL_SETTINGS,
@@ -42,6 +58,7 @@ const CARGO_RECEIVER_POSITION = new THREE.Vector3(4.8, 0, 1.3)
   .applyAxisAngle(new THREE.Vector3(0, 1, 0), SHIP_ROTATION)
   .add(SHIP_POSITION);
 const CONTROL_SETTINGS_KEY = "moon-goons-control-settings-v1";
+const CREW_SESSION_KEY = "moon-goons-crew-session-v1";
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
@@ -64,6 +81,7 @@ type DepositRuntime = {
   velocity: THREE.Vector3;
   isBallistic: boolean;
   bounceCount: number;
+  ownerId: string | null;
   group: THREE.Group;
   shell: THREE.Object3D;
   core: THREE.Object3D;
@@ -391,7 +409,7 @@ function createRover() {
   return rover;
 }
 
-function createAstronaut() {
+function createAstronaut(suitColor = palette.yellow) {
   const astronaut = new THREE.Group();
   astronaut.position.set(-12, 0, 5);
 
@@ -400,7 +418,7 @@ function createAstronaut() {
   });
   astronaut.add(backpack);
 
-  const torso = cylinder(0.9, 1.05, 2.5, palette.yellow, [0, 3.05, 0], 10);
+  const torso = cylinder(0.9, 1.05, 2.5, suitColor, [0, 3.05, 0], 10);
   astronaut.add(torso);
   astronaut.add(box([1.82, 0.3, 1.05], 0x202733, [0, 2.55, -0.12]));
 
@@ -449,7 +467,7 @@ function createAstronaut() {
 
   const leftArm = new THREE.Group();
   leftArm.position.set(-1.05, 3.55, 0);
-  leftArm.add(cylinder(0.3, 0.36, 1.65, palette.yellow, [0, -0.65, 0], 8));
+  leftArm.add(cylinder(0.3, 0.36, 1.65, suitColor, [0, -0.65, 0], 8));
   leftArm.add(
     new THREE.Mesh(
       new THREE.SphereGeometry(0.4, 8, 6),
@@ -465,7 +483,7 @@ function createAstronaut() {
 
   const leftLeg = new THREE.Group();
   leftLeg.position.set(-0.58, 2.05, 0);
-  leftLeg.add(cylinder(0.42, 0.48, 1.7, palette.yellow, [0, -0.72, 0], 8));
+  leftLeg.add(cylinder(0.42, 0.48, 1.7, suitColor, [0, -0.72, 0], 8));
   leftLeg.add(box([0.85, 0.56, 1.15], palette.graphite, [0, -1.65, -0.17]));
   astronaut.add(leftLeg);
 
@@ -476,7 +494,7 @@ function createAstronaut() {
   const drill = new THREE.Group();
   drill.position.set(1.22, 2.7, -0.8);
   drill.rotation.x = Math.PI / 2;
-  drill.add(cylinder(0.36, 0.44, 1.6, palette.yellow, [0, 0, 0], 10));
+  drill.add(cylinder(0.36, 0.44, 1.6, suitColor, [0, 0, 0], 10));
   drill.add(cylinder(0.26, 0.35, 0.85, palette.graphite, [0, -1.05, 0], 10));
   const bit = new THREE.Mesh(
     new THREE.ConeGeometry(0.28, 1.45, 10),
@@ -656,6 +674,7 @@ function createDeposit(
     velocity: new THREE.Vector3(),
     isBallistic: false,
     bounceCount: 0,
+    ownerId: null,
     group,
     shell,
     core,
@@ -1056,6 +1075,28 @@ export function MoonGoonsGame() {
   const settingsOpenRef = useRef(false);
   const mouseCapturedRef = useRef(false);
   const resetRuntimeRef = useRef<(() => void) | null>(null);
+  const crewSessionRef = useRef<CrewSession | null>(null);
+  const crewRoomRef = useRef<CrewRoomSnapshot | null>(null);
+  const localPresenceRef = useRef<CrewLocalPresence>({
+    x: -12,
+    y: 0,
+    z: 5,
+    yaw: 0,
+    inputMask: 0,
+  });
+  const outgoingCrewActionRef = useRef<{
+    sequence: number;
+    type: CrewActionType;
+  } | null>(null);
+  const crewActionSequenceRef = useRef(0);
+  const authoritativeStateRef = useRef<CrewMissionState | null>(null);
+  const incomingAuthorityRef = useRef<{
+    revision: number;
+    state: CrewMissionState;
+  } | null>(null);
+  const networkMissionStartRef = useRef<number | null>(null);
+  const processedAuthorityRevisionRef = useRef(0);
+  const processedCrewActionRef = useRef(0);
   const [notesOpen, setNotesOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [controlSettings, setControlSettings] = useState<ControlSettings>(() => {
@@ -1072,6 +1113,22 @@ export function MoonGoonsGame() {
   const controlSettingsRef = useRef<ControlSettings>(controlSettings);
   const [mouseCaptured, setMouseCaptured] = useState(false);
   const [mouseLockIssue, setMouseLockIssue] = useState<MouseLockIssue>(null);
+  const [crewSession, setCrewSession] = useState<CrewSession | null>(() => {
+    if (typeof window === "undefined") return null;
+    try {
+      const saved = window.localStorage.getItem(CREW_SESSION_KEY);
+      return saved ? (JSON.parse(saved) as CrewSession) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [crewRoom, setCrewRoom] = useState<CrewRoomSnapshot | null>(null);
+  const [crewBusy, setCrewBusy] = useState(false);
+  const [crewError, setCrewError] = useState<string | null>(null);
+  const [crewLatency, setCrewLatency] = useState<number | null>(null);
+  const [crewNetworkTuning, setCrewNetworkTuning] = useState<CrewNetworkTuning>(
+    DEFAULT_CREW_NETWORK_TUNING,
+  );
   const [snapshot, setSnapshot] = useState<Snapshot>({
     phase: "briefing",
     time: MISSION_SECONDS,
@@ -1118,6 +1175,192 @@ export function MoonGoonsGame() {
       // Preferences still apply for this session when storage is unavailable.
     }
   }, []);
+
+  const queueCrewAction = useCallback((type: CrewActionType) => {
+    if (crewSessionRef.current?.role !== "guest") return;
+    crewActionSequenceRef.current += 1;
+    outgoingCrewActionRef.current = {
+      sequence: crewActionSequenceRef.current,
+      type,
+    };
+  }, []);
+
+  const clearCrewSession = useCallback((reason?: string) => {
+    crewSessionRef.current = null;
+    crewRoomRef.current = null;
+    setCrewSession(null);
+    setCrewRoom(null);
+    setCrewLatency(null);
+    outgoingCrewActionRef.current = null;
+    authoritativeStateRef.current = null;
+    incomingAuthorityRef.current = null;
+    networkMissionStartRef.current = null;
+    processedAuthorityRevisionRef.current = 0;
+    processedCrewActionRef.current = 0;
+    try {
+      window.localStorage.removeItem(CREW_SESSION_KEY);
+    } catch {
+      // A temporary room still closes locally when storage is unavailable.
+    }
+    if (reason) setCrewError(reason);
+  }, []);
+
+  const connectCrew = useCallback(
+    async (action: "create" | "join", name: string, roomCode?: string) => {
+      setCrewBusy(true);
+      setCrewError(null);
+      try {
+        const response = await fetch("/api/crew", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ action, name, roomCode }),
+        });
+        const payload = (await response.json()) as {
+          session?: CrewSession;
+          error?: string;
+        };
+        if (!response.ok || !payload.session) {
+          throw new Error(payload.error ?? "Crew Link refused the connection.");
+        }
+        crewSessionRef.current = payload.session;
+        setCrewSession(payload.session);
+        setCrewRoom(null);
+        crewActionSequenceRef.current = 0;
+        processedCrewActionRef.current = 0;
+        try {
+          window.localStorage.setItem(CREW_SESSION_KEY, JSON.stringify(payload.session));
+        } catch {
+          // The room remains usable for this page session.
+        }
+      } catch (error) {
+        setCrewError(error instanceof Error ? error.message : "Crew Link failed.");
+      } finally {
+        setCrewBusy(false);
+      }
+    },
+    [],
+  );
+
+  const leaveCrew = useCallback(() => {
+    const session = crewSessionRef.current;
+    if (session) {
+      const url = `/api/crew?room=${encodeURIComponent(
+        session.roomCode,
+      )}&member=${encodeURIComponent(session.memberId)}`;
+      void fetch(url, {
+        method: "DELETE",
+        headers: { "x-crew-token": session.token },
+        keepalive: true,
+      }).catch(() => undefined);
+    }
+    clearCrewSession();
+  }, [clearCrewSession]);
+
+  useEffect(() => {
+    crewSessionRef.current = crewSession;
+  }, [crewSession]);
+
+  useEffect(() => {
+    crewRoomRef.current = crewRoom;
+  }, [crewRoom]);
+
+  useEffect(() => {
+    if (!crewSession) return;
+    let cancelled = false;
+    let syncing = false;
+
+    const syncCrew = async () => {
+      if (syncing || cancelled) return;
+      syncing = true;
+      const sentAt = performance.now();
+      const action = outgoingCrewActionRef.current;
+      try {
+        if (crewNetworkTuning.addedLatencyMs > 0) {
+          await new Promise((resolve) =>
+            window.setTimeout(resolve, crewNetworkTuning.addedLatencyMs),
+          );
+        }
+        if (
+          crewNetworkTuning.packetLossPercent > 0 &&
+          Math.random() * 100 < crewNetworkTuning.packetLossPercent
+        ) {
+          return;
+        }
+        const url = `/api/crew?room=${encodeURIComponent(
+          crewSession.roomCode,
+        )}&member=${encodeURIComponent(crewSession.memberId)}`;
+        const hostState =
+          crewSession.role === "host" ? authoritativeStateRef.current : null;
+        const response = await fetch(url, {
+          method: "PATCH",
+          headers: {
+            "content-type": "application/json",
+            "x-crew-token": crewSession.token,
+          },
+          body: JSON.stringify({
+            presence: localPresenceRef.current,
+            action,
+            authoritativeState: hostState ?? undefined,
+            phase: crewSession.role === "host" ? phaseRef.current : undefined,
+            ackActionId:
+              crewSession.role === "host" ? processedCrewActionRef.current : undefined,
+          }),
+        });
+        const payload = (await response.json()) as {
+          room?: CrewRoomSnapshot;
+          error?: string;
+        };
+        if (cancelled) return;
+        if (!response.ok || !payload.room) {
+          if (response.status === 401) {
+            clearCrewSession("Crew session expired. Create or join a new room.");
+            return;
+          }
+          throw new Error(payload.error ?? "Crew Link sync failed.");
+        }
+        if (
+          action &&
+          outgoingCrewActionRef.current?.sequence === action.sequence
+        ) {
+          outgoingCrewActionRef.current = null;
+        }
+        const room = payload.room;
+        if (room.phase === "closed" && crewSession.role === "guest") {
+          clearCrewSession("Mission lead disconnected. Your solo controls are still available.");
+          return;
+        }
+        setCrewRoom(room);
+        setCrewLatency(Math.max(0, Math.round(performance.now() - sentAt)));
+        setCrewError(null);
+        if (
+          crewSession.role === "guest" &&
+          room.authoritativeState &&
+          room.revision > processedAuthorityRevisionRef.current
+        ) {
+          incomingAuthorityRef.current = {
+            revision: room.revision,
+            state: room.authoritativeState,
+          };
+        }
+        if (room.phase === "active" && phaseRef.current !== "active") {
+          networkMissionStartRef.current = room.missionSeed;
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setCrewError(error instanceof Error ? error.message : "Crew Link sync failed.");
+        }
+      } finally {
+        syncing = false;
+      }
+    };
+
+    void syncCrew();
+    const interval = window.setInterval(syncCrew, CREW_SYNC_INTERVAL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [clearCrewSession, crewNetworkTuning, crewSession]);
 
   const sound = useCallback(
     (
@@ -1285,6 +1528,16 @@ export function MoonGoonsGame() {
     const world = createWorld(scene);
     const astronaut = createAstronaut();
     scene.add(astronaut);
+    const remoteAstronauts = new Map<
+      string,
+      {
+        group: THREE.Group;
+        anchor: THREE.Object3D;
+        target: THREE.Vector3;
+        targetYaw: number;
+        inputMask: number;
+      }
+    >();
 
     let deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
       (definition) => createDeposit(definition),
@@ -1409,6 +1662,7 @@ export function MoonGoonsGame() {
       deposit.velocity.set(0, 0, 0);
       deposit.isBallistic = false;
       deposit.bounceCount = 0;
+      deposit.ownerId = null;
       deposit.group.position.y = 0.22;
       deposit.group.scale.setScalar(1);
       deposit.shell.visible = false;
@@ -1458,6 +1712,7 @@ export function MoonGoonsGame() {
         held.velocity.set(0, 0, 0);
         held.isBallistic = false;
         held.bounceCount = 0;
+        held.ownerId = null;
         carryingRef.current = null;
       }
       messageRef.current =
@@ -1501,6 +1756,8 @@ export function MoonGoonsGame() {
       repairKick = 0;
       damageCooldown = 0;
       airmailFlash = 0;
+      processedAuthorityRevisionRef.current = 0;
+      processedCrewActionRef.current = 0;
       currentThrowPrediction = null;
       trajectoryGuide.visible = false;
       dustBursts.forEach((burst) => {
@@ -1542,6 +1799,14 @@ export function MoonGoonsGame() {
       }
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) {
         event.preventDefault();
+      }
+      if (event.code === "KeyP" && !event.repeat && crewSessionRef.current) {
+        if (crewSessionRef.current.role === "guest") {
+          queueCrewAction("ping");
+        } else {
+          messageRef.current = "MISSION LEAD PINGED THEIR LOCATION. Confidence is implied.";
+        }
+        sound("scan");
       }
       keysRef.current.add(event.code);
     };
@@ -1638,12 +1903,265 @@ export function MoonGoonsGame() {
       return true;
     };
 
+    const setDepositVisualState = (deposit: DepositRuntime) => {
+      const embedded =
+        deposit.state === "revealed" || deposit.state === "extracting";
+      deposit.group.visible = deposit.state !== "hidden" && deposit.state !== "secured";
+      deposit.shell.visible = embedded;
+      deposit.core.visible = deposit.state === "cargo";
+      deposit.shards.visible = deposit.state === "broken";
+      deposit.ring.visible = deposit.state !== "broken";
+      deposit.beacon.intensity = embedded ? 7 : deposit.state === "cargo" ? 9 : 0;
+    };
+
+    const applyAuthoritativeState = (state: CrewMissionState) => {
+      if (state.missionSeed !== missionSeedRef.current) return;
+      timeRef.current = state.time;
+      scoreRef.current = state.score;
+      messageRef.current = state.message;
+      phaseRef.current = state.phase;
+      repairsCompletedRef.current = state.stats.repairsCompleted;
+      airmailDeliveriesRef.current = state.stats.airmailDeliveries;
+      bankShotDeliveriesRef.current = state.stats.bankShotDeliveries;
+      stuntBonusRef.current = state.stats.stuntBonus;
+      cargoBouncesRef.current = state.stats.cargoBounces;
+      brokenSamplesRef.current = state.stats.brokenSamples;
+
+      const localMemberId = crewSessionRef.current?.memberId ?? null;
+      carryingRef.current = null;
+      state.deposits.forEach((incoming) => {
+        const deposit = deposits.find((candidate) => candidate.id === incoming.id);
+        if (!deposit) return;
+        if (deposit.group.parent !== scene) scene.attach(deposit.group);
+        deposit.state = incoming.state;
+        deposit.progress = incoming.progress;
+        deposit.condition = incoming.condition;
+        deposit.group.position.fromArray(incoming.position);
+        deposit.position = deposit.group.position;
+        deposit.velocity.fromArray(incoming.velocity);
+        deposit.isBallistic = incoming.isBallistic;
+        deposit.bounceCount = incoming.bounceCount;
+        deposit.ownerId = incoming.ownerId;
+        setDepositVisualState(deposit);
+        if (incoming.ownerId === localMemberId) carryingRef.current = incoming.id;
+      });
+    };
+
+    const processCrewActions = () => {
+      const room = crewRoomRef.current;
+      const session = crewSessionRef.current;
+      if (!room || session?.role !== "host") return;
+
+      room.actions.forEach((action) => {
+        if (action.id <= processedCrewActionRef.current) return;
+        const member = room.members.find((candidate) => candidate.id === action.memberId);
+        processedCrewActionRef.current = Math.max(
+          processedCrewActionRef.current,
+          action.id,
+        );
+        if (!member) return;
+        const memberPosition = new THREE.Vector3(member.x, member.y, member.z);
+
+        if (action.type === "scan") {
+          let revealed = 0;
+          deposits.forEach((deposit) => {
+            if (
+              deposit.state === "hidden" &&
+              deposit.group.position.distanceTo(memberPosition) < 16
+            ) {
+              deposit.state = "revealed";
+              setDepositVisualState(deposit);
+              revealed += 1;
+            }
+          });
+          messageRef.current = `${member.name} scanned ${
+            revealed > 0 ? `${revealed} profitable signal${revealed === 1 ? "" : "s"}` : "mostly dust"
+          }.`;
+          return;
+        }
+
+        if (action.type === "ping") {
+          messageRef.current = `${member.name} PINGED THEIR LOCATION. This may indicate teamwork or panic.`;
+          return;
+        }
+
+        const held = deposits.find((deposit) => deposit.ownerId === member.id);
+        if (held) {
+          if (
+            action.type === "interact" &&
+            memberPosition.distanceTo(CARGO_RECEIVER_POSITION) < 3.8
+          ) {
+            const earned = calculateCargoValue(held.kind, held.condition);
+            held.state = "secured";
+            held.ownerId = null;
+            held.group.visible = false;
+            held.velocity.set(0, 0, 0);
+            held.isBallistic = false;
+            scoreRef.current += earned;
+            messageRef.current = `${member.name} secured ${cargoData[held.kind].name} for ¢${earned}.`;
+            airmailFlash = 1;
+            sound("secure");
+            return;
+          }
+
+          if (held.group.parent !== scene) scene.attach(held.group);
+          const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(
+            new THREE.Vector3(0, 1, 0),
+            member.yaw,
+          );
+          held.group.position.copy(memberPosition).addScaledVector(forward, 2.3);
+          held.group.position.y = action.type === "throw" ? 2.4 + member.y : 0.62;
+          held.ownerId = null;
+          held.group.scale.setScalar(1);
+          if (action.type === "throw") {
+            held.velocity.copy(forward).multiplyScalar(cargoData[held.kind].throwSpeed);
+            held.velocity.y = cargoData[held.kind].throwLift;
+            held.isBallistic = true;
+            held.bounceCount = 0;
+            messageRef.current = `${member.name} launched ${cargoData[held.kind].name}. Crew chase authorized.`;
+            sound("launch");
+          } else {
+            held.velocity.set(0, 0, 0);
+            held.isBallistic = false;
+            held.bounceCount = 0;
+            messageRef.current = `${member.name} placed ${cargoData[held.kind].name}. Suspiciously careful.`;
+          }
+          return;
+        }
+
+        const nearbyCargo = deposits
+          .filter(
+            (deposit) =>
+              deposit.state === "cargo" &&
+              deposit.ownerId === null &&
+              !deposit.isBallistic,
+          )
+          .sort(
+            (a, b) =>
+              a.group.position.distanceTo(memberPosition) -
+              b.group.position.distanceTo(memberPosition),
+          )[0];
+        if (nearbyCargo && nearbyCargo.group.position.distanceTo(memberPosition) < 3.2) {
+          nearbyCargo.ownerId = member.id;
+          nearbyCargo.velocity.set(0, 0, 0);
+          nearbyCargo.isBallistic = false;
+          nearbyCargo.bounceCount = 0;
+          messageRef.current = `${member.name} acquired ${cargoData[nearbyCargo.kind].name}.`;
+          sound("pickup");
+        }
+      });
+    };
+
+    const updateRemoteCrew = (dt: number, now: number) => {
+      const room = crewRoomRef.current;
+      const session = crewSessionRef.current;
+      const activeIds = new Set<string>();
+      if (room && session) {
+        room.members.forEach((member) => {
+          if (member.id === session.memberId) return;
+          activeIds.add(member.id);
+          let remote = remoteAstronauts.get(member.id);
+          if (!remote) {
+            const group = createAstronaut(crewColor(member.colorIndex).hex);
+            group.position.set(member.x, member.y, member.z);
+            group.scale.setScalar(0.94);
+            const anchor = new THREE.Object3D();
+            anchor.position.set(0, 2.05, -2.05);
+            group.add(anchor);
+            scene.add(group);
+            remote = {
+              group,
+              anchor,
+              target: new THREE.Vector3(member.x, member.y, member.z),
+              targetYaw: member.yaw,
+              inputMask: member.inputMask,
+            };
+            remoteAstronauts.set(member.id, remote);
+          }
+          remote.target.set(member.x, member.y, member.z);
+          remote.targetYaw = member.yaw;
+          remote.inputMask = member.inputMask;
+          remote.group.visible = phaseRef.current === "active";
+          remote.group.position.lerp(remote.target, 1 - Math.exp(-dt * 9));
+          const yawDelta = Math.atan2(
+            Math.sin(remote.targetYaw - remote.group.rotation.y),
+            Math.cos(remote.targetYaw - remote.group.rotation.y),
+          );
+          remote.group.rotation.y += yawDelta * (1 - Math.exp(-dt * 11));
+
+          const moving = (remote.inputMask & CREW_INPUT_MOVING) !== 0;
+          const downed = (remote.inputMask & CREW_INPUT_DOWNED) !== 0;
+          const gait = now * 0.009;
+          const gaitAmount = downed ? 0.03 : moving ? 0.52 : 0.08;
+          (remote.group.userData.leftLeg as THREE.Group).rotation.x =
+            Math.sin(gait) * gaitAmount;
+          (remote.group.userData.rightLeg as THREE.Group).rotation.x =
+            Math.sin(gait + Math.PI) * gaitAmount;
+          remote.group.rotation.z = THREE.MathUtils.damp(
+            remote.group.rotation.z,
+            downed ? -1.18 : 0,
+            8,
+            dt,
+          );
+          const drilling = (remote.inputMask & CREW_INPUT_DRILL) !== 0;
+          if (drilling) {
+            (remote.group.userData.drill as THREE.Group).rotation.y += dt * 34;
+          }
+          const thruster = (remote.inputMask & CREW_INPUT_THRUSTER) !== 0;
+          (remote.group.userData.thrusterFlames as THREE.Mesh[]).forEach((flame) => {
+            flame.scale.setScalar(
+              THREE.MathUtils.damp(flame.scale.x, thruster ? 0.82 : 0.01, 18, dt),
+            );
+          });
+          (remote.group.userData.thrusterGlow as THREE.PointLight).intensity =
+            THREE.MathUtils.damp(
+              (remote.group.userData.thrusterGlow as THREE.PointLight).intensity,
+              thruster ? 9 : 0,
+              16,
+              dt,
+            );
+        });
+      }
+
+      remoteAstronauts.forEach((remote, id) => {
+        if (activeIds.has(id)) return;
+        remote.group.removeFromParent();
+        remoteAstronauts.delete(id);
+      });
+    };
+
     const animate = (now: number) => {
       const dt = Math.min((now - previous) / 1000, 0.04);
       previous = now;
       hudTimer += dt;
       const keys = keysRef.current;
+      if (
+        networkMissionStartRef.current !== null &&
+        phaseRef.current === "briefing"
+      ) {
+        missionSeedRef.current = networkMissionStartRef.current;
+        resetRuntimeRef.current?.();
+        phaseRef.current = "active";
+        messageRef.current =
+          crewSessionRef.current?.role === "guest"
+            ? "Crew contract received. Local movement prediction engaged."
+            : "Crew contract live. Mission state authority assigned.";
+        networkMissionStartRef.current = null;
+      }
+      const session = crewSessionRef.current;
+      const hasAuthority = !session || session.role === "host";
+      const incomingAuthority = incomingAuthorityRef.current;
+      if (
+        session?.role === "guest" &&
+        incomingAuthority &&
+        incomingAuthority.revision > processedAuthorityRevisionRef.current
+      ) {
+        applyAuthoritativeState(incomingAuthority.state);
+        processedAuthorityRevisionRef.current = incomingAuthority.revision;
+      }
       const phase = phaseRef.current;
+      updateRemoteCrew(dt, now);
+      if (hasAuthority && phase === "active") processCrewActions();
 
       airmailFlash = Math.max(0, airmailFlash - dt * 1.25);
       const receiverPulse = 1 + Math.sin(now * 0.0045) * 0.06 + airmailFlash * 0.22;
@@ -1742,6 +2260,40 @@ export function MoonGoonsGame() {
         }
 
         const carried = deposits.find((deposit) => deposit.id === carryingRef.current);
+        if (hasAuthority && session?.role === "host") {
+          crewRoomRef.current?.members.forEach((member) => {
+            if (
+              member.id === session.memberId ||
+              (member.inputMask & CREW_INPUT_DRILL) === 0
+            ) {
+              return;
+            }
+            const memberPosition = new THREE.Vector3(member.x, member.y, member.z);
+            const target = deposits
+              .filter(
+                (deposit) =>
+                  (deposit.state === "revealed" || deposit.state === "extracting") &&
+                  deposit.ownerId === null,
+              )
+              .sort(
+                (a, b) =>
+                  a.group.position.distanceTo(memberPosition) -
+                  b.group.position.distanceTo(memberPosition),
+              )[0];
+            if (!target || target.group.position.distanceTo(memberPosition) >= 3) return;
+            target.state = "extracting";
+            target.progress = Math.min(100, target.progress + dt * 20);
+            target.beacon.intensity = 11;
+            if (target.progress >= 100) {
+              target.state = "cargo";
+              target.shell.visible = false;
+              target.core.visible = true;
+              target.beacon.intensity = 9;
+              messageRef.current = `${member.name} extracted ${cargoData[target.kind].name}. Shared logistics problem created.`;
+              sound("pickup");
+            }
+          });
+        }
         if (timeRef.current <= 55) {
           if (!meteorWarningPlayed) {
             meteorWarningPlayed = true;
@@ -2044,22 +2596,27 @@ export function MoonGoonsGame() {
           scanAnimation = 0.01;
           scanRing.visible = true;
           scanRing.position.set(astronaut.position.x, 0.18, astronaut.position.z);
-          let revealed = 0;
-          deposits.forEach((deposit) => {
-            if (
-              deposit.state === "hidden" &&
-              deposit.position.distanceTo(astronaut.position) < 16
-            ) {
-              deposit.state = "revealed";
-              deposit.group.visible = true;
-              deposit.beacon.intensity = 7;
-              revealed += 1;
-            }
-          });
-          messageRef.current =
-            revealed > 0
-              ? `Scanner confirms ${revealed} financially interesting signal${revealed === 1 ? "" : "s"}.`
-              : "Scanner found dust, regret, and no nearby deposits.";
+          if (hasAuthority) {
+            let revealed = 0;
+            deposits.forEach((deposit) => {
+              if (
+                deposit.state === "hidden" &&
+                deposit.position.distanceTo(astronaut.position) < 16
+              ) {
+                deposit.state = "revealed";
+                deposit.group.visible = true;
+                deposit.beacon.intensity = 7;
+                revealed += 1;
+              }
+            });
+            messageRef.current =
+              revealed > 0
+                ? `Scanner confirms ${revealed} financially interesting signal${revealed === 1 ? "" : "s"}.`
+                : "Scanner found dust, regret, and no nearby deposits.";
+          } else {
+            queueCrewAction("scan");
+            messageRef.current = "Scan request sent to mission lead authority.";
+          }
           sound("scan");
         }
         scanLatchRef.current = scanPressed;
@@ -2086,7 +2643,12 @@ export function MoonGoonsGame() {
           }
           deposit.group.rotation.y += dt * (deposit.state === "cargo" ? 0.58 : 0.16);
           deposit.ring.scale.setScalar(1 + Math.sin(now * 0.003 + index) * 0.08);
-          if (deposit.state === "cargo" && carryingRef.current !== deposit.id) {
+          if (!hasAuthority) return;
+          if (
+            deposit.state === "cargo" &&
+            carryingRef.current !== deposit.id &&
+            deposit.ownerId === null
+          ) {
             if (deposit.isBallistic) {
               deposit.velocity.y -= MOON_GRAVITY * dt;
               deposit.group.position.addScaledVector(deposit.velocity, dt);
@@ -2203,6 +2765,26 @@ export function MoonGoonsGame() {
           }
         });
 
+        const localOwnerId = session?.memberId ?? "solo";
+        deposits.forEach((deposit) => {
+          if (deposit.state !== "cargo" || !deposit.ownerId) return;
+          if (deposit.ownerId === localOwnerId) {
+            carryingRef.current = deposit.id;
+            if (deposit.group.parent !== carriedAnchor) {
+              carriedAnchor.add(deposit.group);
+              deposit.group.position.set(0, 0, 0);
+              deposit.group.scale.setScalar(deposit.kind === "platinum" ? 0.9 : 0.72);
+            }
+            return;
+          }
+          const remote = remoteAstronauts.get(deposit.ownerId);
+          if (remote && deposit.group.parent !== remote.anchor) {
+            remote.anchor.add(deposit.group);
+            deposit.group.position.set(0, 0, 0);
+            deposit.group.scale.setScalar(deposit.kind === "platinum" ? 0.9 : 0.72);
+          }
+        });
+
         const nearestDrillable = deposits
           .filter(
             (deposit) =>
@@ -2275,8 +2857,10 @@ export function MoonGoonsGame() {
           : 2.6;
 
         if (drilling && nearestDrillable) {
-          nearestDrillable.state = "extracting";
-          nearestDrillable.progress += dt * (heatRef.current > 72 ? 15 : 23);
+          if (hasAuthority) {
+            nearestDrillable.state = "extracting";
+            nearestDrillable.progress += dt * (heatRef.current > 72 ? 15 : 23);
+          }
           drillWearRef.current = Math.min(
             DRILL_JAM_WEAR,
             drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
@@ -2293,7 +2877,7 @@ export function MoonGoonsGame() {
           drillBeam.visible = true;
           drillGlow.intensity = 16 + Math.sin(now * 0.08) * 5;
           nearestDrillable.beacon.intensity = 11;
-          if (nearestDrillable.progress >= 100) {
+          if (hasAuthority && nearestDrillable.progress >= 100) {
             nearestDrillable.progress = 100;
             nearestDrillable.state = "cargo";
             nearestDrillable.shell.visible = false;
@@ -2334,11 +2918,17 @@ export function MoonGoonsGame() {
 
         const interactPressed = !incapacitated && keys.has("KeyE");
         if (interactPressed && !interactLatchRef.current) {
-          if (carryingRef.current !== null) {
+          if (!hasAuthority) {
+            queueCrewAction(
+              keys.has("ShiftLeft") || keys.has("ShiftRight") ? "throw" : "interact",
+            );
+            messageRef.current = "Cargo request sent to mission lead authority.";
+          } else if (carryingRef.current !== null) {
             const held = deposits.find((deposit) => deposit.id === carryingRef.current);
             if (held) {
               if (astronaut.position.distanceTo(CARGO_RECEIVER_POSITION) < 3.8) {
                 held.state = "secured";
+                held.ownerId = null;
                 held.group.visible = false;
                 const earned = calculateCargoValue(held.kind, held.condition);
                 scoreRef.current += earned;
@@ -2375,10 +2965,12 @@ export function MoonGoonsGame() {
                     Math.max(0, verticalVelocity * 0.35);
                   held.isBallistic = true;
                   held.bounceCount = 0;
+                  held.ownerId = null;
                 } else {
                   held.velocity.set(0, 0, 0);
                   held.isBallistic = false;
                   held.bounceCount = 0;
+                  held.ownerId = null;
                 }
                 carryingRef.current = null;
                 messageRef.current = throwing
@@ -2402,6 +2994,7 @@ export function MoonGoonsGame() {
               nearbyCargo.position.distanceTo(astronaut.position) < 3.2
             ) {
               carryingRef.current = nearbyCargo.id;
+              nearbyCargo.ownerId = session?.memberId ?? "solo";
               nearbyCargo.velocity.set(0, 0, 0);
               nearbyCargo.isBallistic = false;
               nearbyCargo.bounceCount = 0;
@@ -2443,6 +3036,32 @@ export function MoonGoonsGame() {
       ) {
         document.exitPointerLock();
       }
+
+      let networkInputMask = 0;
+      if (keys.has("KeyF") && !overheatedRef.current && !drillJammedRef.current) {
+        networkInputMask |= CREW_INPUT_DRILL;
+      }
+      if (
+        keys.has("KeyW") ||
+        keys.has("KeyS") ||
+        keys.has("KeyA") ||
+        keys.has("KeyD") ||
+        keys.has("ArrowUp") ||
+        keys.has("ArrowDown")
+      ) {
+        networkInputMask |= CREW_INPUT_MOVING;
+      }
+      if (keys.has("Space") && playerHeight > 0.38 && thrusterFuel > 0) {
+        networkInputMask |= CREW_INPUT_THRUSTER;
+      }
+      if (downedRef.current) networkInputMask |= CREW_INPUT_DOWNED;
+      localPresenceRef.current = {
+        x: astronaut.position.x,
+        y: astronaut.position.y,
+        z: astronaut.position.z,
+        yaw: astronaut.rotation.y,
+        inputMask: networkInputMask,
+      };
 
       dustBursts.forEach((burst) => {
         if (!burst.mesh.visible) return;
@@ -2732,6 +3351,41 @@ export function MoonGoonsGame() {
             recoveryProgressRef.current,
           )}%`;
         }
+        if (
+          hasAuthority &&
+          session?.role === "host" &&
+          phaseRef.current !== "briefing"
+        ) {
+          authoritativeStateRef.current = {
+            missionSeed: missionSeedRef.current,
+            phase: phaseRef.current,
+            time: timeRef.current,
+            score: scoreRef.current,
+            message: messageRef.current,
+            deposits: deposits.map((deposit) => {
+              const worldPosition = deposit.group.getWorldPosition(new THREE.Vector3());
+              return {
+                id: deposit.id,
+                state: deposit.state,
+                progress: deposit.progress,
+                condition: deposit.condition,
+                position: worldPosition.toArray() as [number, number, number],
+                velocity: deposit.velocity.toArray() as [number, number, number],
+                isBallistic: deposit.isBallistic,
+                bounceCount: deposit.bounceCount,
+                ownerId: deposit.ownerId,
+              };
+            }),
+            stats: {
+              repairsCompleted: repairsCompletedRef.current,
+              airmailDeliveries: airmailDeliveriesRef.current,
+              bankShotDeliveries: bankShotDeliveriesRef.current,
+              stuntBonus: stuntBonusRef.current,
+              cargoBounces: cargoBouncesRef.current,
+              brokenSamples: brokenSamplesRef.current,
+            },
+          };
+        }
         setSnapshot({
           phase: phaseRef.current,
           time: timeRef.current,
@@ -2805,14 +3459,19 @@ export function MoonGoonsGame() {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [requestMouseLock, sound]);
+  }, [queueCrewAction, requestMouseLock, sound]);
 
   const resetMission = useCallback(() => {
-    missionSeedRef.current = nextMissionSeed(missionSeedRef.current);
+    const session = crewSessionRef.current;
+    if (session?.role === "guest") return;
+    missionSeedRef.current = session
+      ? session.missionSeed
+      : nextMissionSeed(missionSeedRef.current);
     resetRuntimeRef.current?.();
     phaseRef.current = "active";
-    messageRef.current =
-      "Mission live. Find something expensive and remain technically alive.";
+    messageRef.current = session
+      ? "Crew mission live. Shared contract authority assigned to mission lead."
+      : "Mission live. Find something expensive and remain technically alive.";
     setSnapshot({
       phase: "active",
       time: MISSION_SECONDS,
@@ -2869,7 +3528,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 017 // MISSION DIRECTOR</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 018 // CREW LINK</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -2888,6 +3547,14 @@ export function MoonGoonsGame() {
 
       {snapshot.phase === "active" && (
         <>
+          {crewSession && (
+            <CrewRoster
+              session={crewSession}
+              room={crewRoom}
+              latency={crewLatency}
+              onLeave={leaveCrew}
+            />
+          )}
           <div
             className={`${styles.mouseCapture} ${
               mouseCaptured ? styles.mouseCaptureActive : ""
@@ -3094,6 +3761,12 @@ export function MoonGoonsGame() {
               <kbd>R</kbd>
               <span>REPAIR JAM</span>
             </div>
+            {crewSession && (
+              <div>
+                <kbd>P</kbd>
+                <span>CREW PING</span>
+              </div>
+            )}
             <div>
               <kbd>E / ⇧E</kbd>
               <span>USE / THROW</span>
@@ -3130,16 +3803,16 @@ export function MoonGoonsGame() {
               <span>S.P.A.C.E.</span>
               SCIENTIFIC PROCUREMENT AND COLLECTION ENTERPRISE
             </div>
-            <p className={styles.kicker}>3D AESTHETIC VERTICAL SLICE // PRACTICE MOON</p>
+            <p className={styles.kicker}>MULTIPLAYER CORE 6A // CREW LINK TRANSPORT SPIKE</p>
             <h1>
               SUIT UP.
               <br />
               <em>TRY NOT TO FLOAT.</em>
             </h1>
             <p className={styles.lede}>
-              Explore a fully 3D Practice Moon, find buried material, manage your drill,
-              dodge unstable pressure vents, and haul—or ricochet—¢{CONTRACT_TARGET}{" "}
-              back to the ship&apos;s glowing cargo receiver.
+              Run the Practice Moon solo, or open a room for up to four scientists.
+              Crew movement, scanning, drilling, cargo ownership, throws, deposits, and
+              mission results now share one host-authoritative contract.
             </p>
             <div className={styles.briefGrid}>
               <div>
@@ -3158,9 +3831,19 @@ export function MoonGoonsGame() {
                 <p>The arc predicts first impact. Ricochet into the bay for a bank-shot bonus.</p>
               </div>
             </div>
-            <button type="button" onClick={resetMission}>
-              ACCEPT LIABILITY + ENTER 3D
-            </button>
+            <CrewLobby
+              session={crewSession}
+              room={crewRoom}
+              busy={crewBusy}
+              error={crewError}
+              tuning={crewNetworkTuning}
+              onTuningChange={setCrewNetworkTuning}
+              onCreate={(name) => void connectCrew("create", name)}
+              onJoin={(name, code) => void connectCrew("join", name, code)}
+              onLeave={leaveCrew}
+              onLaunch={resetMission}
+              onSolo={resetMission}
+            />
             <small>Keyboard + mouse recommended · Escape releases the camera</small>
           </div>
         </section>
@@ -3215,9 +3898,15 @@ export function MoonGoonsGame() {
                 <strong>¢{snapshot.stuntBonus}</strong>
               </div>
             </div>
-            <button type="button" onClick={resetMission}>
-              FILE MINIMAL PAPERWORK + RETRY
-            </button>
+            {crewSession?.role === "guest" ? (
+              <p className={styles.crewWaiting}>
+                WAITING FOR MISSION LEAD TO FILE MINIMAL PAPERWORK…
+              </p>
+            ) : (
+              <button type="button" onClick={resetMission}>
+                FILE MINIMAL PAPERWORK + RETRY
+              </button>
+            )}
           </div>
         </section>
       )}

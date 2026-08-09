@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 017: randomized Practice Moon contracts, escalating meteor hazards, recoverable equipment and suit failures, tunable mouse controls, predictive cargo-throw arcs, breakable sample vials, rewarded bank-shot airmail, and a repeatable gameplay QA suite.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 018: the first Multiplayer Core slice, including temporary 1–4 player rooms, a shared contract seed, interpolated remote astronauts, host-authoritative mission state, explicit cargo ownership, networked field actions, and built-in latency simulation.
 
 ## Playable build
 
@@ -33,6 +33,11 @@ The first prototype includes:
 - A three-minute departure window
 - Success, failure, debrief, and immediate restart
 - A shared Field Notes board for remote playtest feedback
+- Temporary five-character Crew Link room codes for 1–4 players
+- Distinct, color-coded remote astronauts with smooth position interpolation
+- Host-authoritative scanning, drilling, cargo ownership, throwing, deposits, timer, and results
+- Crew roster, round-trip latency display, location pings, and clean host-disconnect recovery
+- Adjustable 150/300 ms latency and 10/20% packet-loss simulation for network testing
 
 ## Shared playtesting
 
@@ -56,6 +61,7 @@ using the public build can review and add to the same development log.
 | R | Repair a jammed drill |
 | E | Grab, drop, deposit, launch, or hold to reboot a disabled suit |
 | Shift + E | Throw carried cargo (fragile samples may lose value on impact) |
+| P | Ping your position to the connected crew |
 
 Open **CONTROL TUNING** to adjust mouse sensitivity, invert vertical look, or change effects volume. These preferences are saved on the current device.
 
@@ -80,7 +86,7 @@ pnpm run build
 
 ## Current milestone
 
-This is the first-playable and visual-foundation milestone. Multiplayer, progression, additional destinations, controller support, and desktop/Steam packaging remain future milestones.
+Build 018 begins Milestone 6: Multiplayer Core. It is the room-code and transport spike: crews can form, share one mission, see predicted/interpolated movement, and interact with host-authoritative mission objects. This build deliberately uses short-interval HTTP synchronization while the browser-first prototype is hosted on Sites. A later networking pass should move the transport behind a WebSocket or WebRTC adapter, add host migration, and run the full four-player soak-test exit criteria. Progression, additional destinations, controller support, and desktop/Steam packaging remain later milestones.
 
 ## Design references
 

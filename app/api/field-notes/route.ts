@@ -61,7 +61,7 @@ export async function POST(request: Request) {
         author,
         category,
         content,
-      build: "017",
+      build: "018",
       })
       .returning();
 

@@ -21,6 +21,51 @@ import {
   registerRepairStrike,
   seededRandom,
 } from "../app/game/gameRules.ts";
+import {
+  CREW_INPUT_DOWNED,
+  CREW_INPUT_DRILL,
+  CREW_INPUT_MOVING,
+  CREW_INPUT_THRUSTER,
+  clampCrewTransform,
+  crewColor,
+  isCrewMemberFresh,
+  normalizeCrewName,
+  normalizeRoomCode,
+} from "../app/game/crewNetwork.ts";
+
+test("crew names and room codes are safe, compact, and easy to share", () => {
+  assert.equal(normalizeCrewName("  Doctor   Bounce  "), "Doctor Bounce");
+  assert.equal(normalizeCrewName("X".repeat(40)).length, 24);
+  assert.equal(normalizeRoomCode(" ab-2io9! "), "AB29");
+  assert.equal(normalizeRoomCode("qwerty"), "QWERT");
+});
+
+test("network transforms clamp untrusted client movement and input", () => {
+  const transform = clampCrewTransform({
+    x: 900,
+    y: -4,
+    z: -900,
+    yaw: Math.PI * 5,
+    inputMask:
+      CREW_INPUT_DRILL |
+      CREW_INPUT_MOVING |
+      CREW_INPUT_THRUSTER |
+      CREW_INPUT_DOWNED |
+      64,
+  });
+  assert.equal(transform.x, 48);
+  assert.equal(transform.y, 0);
+  assert.equal(transform.z, -48);
+  assert.ok(Math.abs(transform.yaw - Math.PI) < 0.000001);
+  assert.equal(transform.inputMask, 15);
+});
+
+test("crew colors wrap and presence expiration has a clear boundary", () => {
+  assert.equal(crewColor(4).name, crewColor(0).name);
+  const now = Date.parse("2026-08-09T12:00:12.000Z");
+  assert.equal(isCrewMemberFresh("2026-08-09T12:00:00.000Z", now), true);
+  assert.equal(isCrewMemberFresh("2026-08-09T11:59:59.999Z", now), false);
+});
 
 test("mission timer formatting is stable at boundaries", () => {
   assert.equal(formatTime(180), "3:00");

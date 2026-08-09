@@ -2172,6 +2172,20 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Four players complete repeated missions under target latency.
 - Disconnects produce a clear, recoverable outcome.
 
+**Prototype status — Build 018**
+
+- Implemented the browser-first transport spike with temporary five-character rooms,
+  four-player rosters, predicted local movement, interpolated remote astronauts, a shared
+  mission seed, and host-authored mission snapshots.
+- Guest scan, drill, grab, drop, throw, ping, and deposit intent is relayed to the host;
+  cargo ownership and rewards are resolved only by the mission lead simulation.
+- Includes artificial 150/300 ms delay and 10/20% packet-loss controls for playtests.
+- Host departure or heartbeat expiry returns guests to a recoverable solo briefing.
+- The prototype currently uses short-interval HTTP synchronization on the browser-first
+  hosting platform. Before Milestone 6 exits, place the same transport interface over
+  WebSockets or WebRTC, add automated four-client soak tests, validate adverse-network
+  object ownership, and decide whether host migration belongs before or after the demo.
+
 ## Milestone 7: Cooperation Systems
 
 **Deliverables**
@@ -2520,4 +2534,3 @@ These decisions should be answered through prototypes and playtests:
 The next production step is not to add more destinations or features. It is to build a graybox Practice Moon where one player can make a satisfying low-gravity jump, locate a deposit, overheat a drill, struggle with a physical sample, and reach the ship as the departure alarm sounds.
 
 If that sequence is fun with placeholder art, *Moon Goons* has a foundation. Every system after it should deepen the same promise: a clear scientific job, a risky physical plan, and a disaster worth laughing about.
-

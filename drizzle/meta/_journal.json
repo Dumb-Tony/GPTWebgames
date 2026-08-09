@@ -15,6 +15,13 @@
       "when": 1785467249819,
       "tag": "0001_flaky_kylun",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786293336454,
+      "tag": "0002_ambitious_black_knight",
+      "breakpoints": true
     }
   ]
 }

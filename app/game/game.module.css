@@ -1445,6 +1445,288 @@
   color: var(--ink);
 }
 
+.crewLobby {
+  position: relative;
+  z-index: 3;
+  display: grid;
+  gap: 11px;
+  max-width: 650px;
+  margin-top: 20px;
+  padding: 15px;
+  border: 1px solid rgba(110, 231, 228, 0.26);
+  border-left: 4px solid var(--cyan);
+  background: rgba(5, 10, 22, 0.9);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.28);
+}
+
+.crewModeHeader,
+.crewLobbyHeader,
+.crewRosterHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  font-family: monospace;
+}
+
+.crewModeHeader span,
+.crewLobbyHeader span,
+.crewRosterHeader span,
+.networkLab > span {
+  color: var(--cyan);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.crewModeHeader strong {
+  color: var(--ink);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.crewNameField {
+  display: grid;
+  grid-template-columns: 100px 1fr;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.crewNameField input,
+.crewJoinRow input,
+.networkLab select {
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 0;
+  outline: none;
+  background: #111727;
+  color: var(--ink);
+  font-family: monospace;
+  font-weight: 800;
+}
+
+.crewNameField input,
+.crewJoinRow input {
+  padding: 10px 12px;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.crewNameField input:focus,
+.crewJoinRow input:focus,
+.networkLab select:focus {
+  border-color: var(--cyan);
+  box-shadow: 0 0 0 2px rgba(110, 231, 228, 0.12);
+}
+
+.crewActions,
+.crewJoinRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.briefingCard .crewLobby button,
+.resultsCard .crewWaiting {
+  margin: 0;
+}
+
+.briefingCard .crewLobby button {
+  padding: 11px 13px;
+  font-size: 10px;
+  clip-path: none;
+}
+
+.briefingCard .crewLobby button:disabled {
+  cursor: not-allowed;
+  filter: saturate(0.3);
+  opacity: 0.58;
+  transform: none;
+}
+
+.crewJoinRow input {
+  text-align: center;
+  font-size: 15px;
+  letter-spacing: 0.24em;
+}
+
+.crewPrivacy,
+.crewInvite,
+.crewWaiting,
+.crewError {
+  margin: 0;
+  font-family: monospace;
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.crewPrivacy,
+.crewInvite {
+  color: var(--muted);
+}
+
+.crewError {
+  padding: 8px 10px;
+  border-left: 3px solid var(--red);
+  background: rgba(255, 97, 111, 0.1);
+  color: #ffb6bd;
+}
+
+.crewLobbyHeader > div {
+  display: grid;
+  gap: 3px;
+}
+
+.crewLobbyHeader strong {
+  color: var(--yellow);
+  font-size: 31px;
+  letter-spacing: 0.22em;
+  line-height: 1;
+}
+
+.crewLobbyHeader > button {
+  color: var(--ink);
+  background: #343b4d;
+}
+
+.crewMembers {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 6px;
+}
+
+.crewMembers > div,
+.crewRosterMember {
+  display: grid;
+  grid-template-columns: 9px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px;
+  background: #111727;
+}
+
+.crewMembers i,
+.crewRosterMember i {
+  width: 7px;
+  height: 18px;
+  box-shadow: 0 0 10px currentColor;
+}
+
+.crewMembers span,
+.crewRosterMember span {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crewMembers small,
+.crewRosterMember small {
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 7px;
+  letter-spacing: 0.08em;
+}
+
+.crewMembers .crewVacancy {
+  opacity: 0.48;
+}
+
+.crewVacancy i {
+  border: 1px dashed var(--muted);
+  background: transparent;
+  box-shadow: none;
+}
+
+.networkLab {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding-top: 7px;
+  border-top: 1px solid var(--line);
+}
+
+.networkLab label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 8px;
+}
+
+.networkLab select {
+  padding: 5px 7px;
+  font-size: 8px;
+}
+
+.crewWaiting {
+  padding: 12px;
+  border: 1px solid rgba(255, 216, 90, 0.28);
+  background: rgba(255, 216, 90, 0.08);
+  color: var(--yellow);
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+
+.crewRoster {
+  position: absolute;
+  z-index: 5;
+  right: 28px;
+  bottom: 152px;
+  display: grid;
+  gap: 4px;
+  width: 248px;
+  padding: 11px;
+  border: 1px solid rgba(110, 231, 228, 0.26);
+  border-top: 3px solid var(--cyan);
+  background: rgba(9, 14, 27, 0.88);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.crewRosterHeader {
+  margin-bottom: 4px;
+}
+
+.crewRosterHeader strong {
+  color: var(--green);
+  font-family: monospace;
+  font-size: 9px;
+}
+
+.crewRosterMember {
+  padding: 6px 7px;
+}
+
+.crewRoster > button {
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 8px;
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+
+.briefingCard {
+  max-height: 94svh;
+  overflow-y: auto;
+}
+
 @keyframes warningPulse {
   50% {
     background: rgba(112, 19, 32, 0.72);
@@ -1564,6 +1846,12 @@
     width: 36vw;
   }
 
+  .crewRoster {
+    right: 12px;
+    bottom: 118px;
+    width: min(230px, 52vw);
+  }
+
   .actionPrompt {
     bottom: 126px;
     min-width: min(360px, 82vw);
@@ -1587,6 +1875,16 @@
   }
 
   .briefGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .crewActions,
+  .crewJoinRow,
+  .crewMembers {
+    grid-template-columns: 1fr;
+  }
+
+  .networkLab {
     grid-template-columns: 1fr;
   }
 
