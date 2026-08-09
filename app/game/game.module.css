@@ -594,6 +594,34 @@
   text-shadow: 0 0 12px rgba(110, 231, 228, 0.3);
 }
 
+.actionPrompt[data-risk="RISKY"] {
+  border-top-color: var(--yellow);
+}
+
+.actionPrompt[data-risk="RISKY"] strong {
+  color: var(--yellow);
+  text-shadow: 0 0 12px rgba(255, 216, 90, 0.36);
+}
+
+.actionPrompt[data-risk="SEVERE"] {
+  border-top-color: var(--orange);
+}
+
+.actionPrompt[data-risk="SEVERE"] strong {
+  color: var(--orange);
+  text-shadow: 0 0 14px rgba(255, 134, 94, 0.42);
+}
+
+.actionPrompt[data-risk="SHATTER"] {
+  border-top-color: var(--red);
+  animation: warningPulse 0.8s steps(2, end) infinite;
+}
+
+.actionPrompt[data-risk="SHATTER"] strong {
+  color: var(--red);
+  text-shadow: 0 0 16px rgba(255, 97, 111, 0.52);
+}
+
 .launchButton {
   position: absolute;
   z-index: 5;
@@ -808,7 +836,7 @@
 }
 
 .resultsCard {
-  width: min(860px, 94vw);
+  width: min(900px, 94vw);
   border-top-color: var(--green);
 }
 
@@ -862,7 +890,7 @@
 }
 
 .resultGrid {
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .resultGrid > div {
@@ -1579,6 +1607,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .urgent,
+  .actionPrompt[data-risk="SHATTER"],
   .homePulse {
     animation: none;
   }

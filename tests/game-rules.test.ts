@@ -6,6 +6,7 @@ import {
   advanceSuitRecovery,
   applySuitDamage,
   canAirmailCargo,
+  calculateBankShotBonus,
   calculateCargoBounce,
   calculateCargoImpact,
   calculateCargoImpactCondition,
@@ -16,6 +17,7 @@ import {
   missionMaximumValue,
   nextMissionSeed,
   normalizeControlSettings,
+  predictCargoThrow,
   registerRepairStrike,
   seededRandom,
 } from "../app/game/gameRules.ts";
@@ -119,6 +121,26 @@ test("cryogenic vials degrade on rough impacts and shatter at the redline", () =
     condition: 0,
   });
   assert.equal(calculateCargoImpact("platinum", 1, 20).broken, false);
+});
+
+test("throw prediction exposes distance and cargo-specific first-impact risk", () => {
+  const ordinaryVialThrow = predictCargoThrow("vial", 1, 2.4, 8.2, 3.5);
+  assert.ok(ordinaryVialThrow.horizontalDistance > 16);
+  assert.ok(ordinaryVialThrow.impactSpeed < 10.2);
+  assert.equal(ordinaryVialThrow.risk, "SEVERE");
+
+  const boostedVialThrow = predictCargoThrow("vial", 1, 5, 8.2, 3.5);
+  assert.ok(boostedVialThrow.impactSpeed > 10.2);
+  assert.equal(boostedVialThrow.risk, "SHATTER");
+
+  assert.equal(predictCargoThrow("platinum", 1, 2.4, 6.1, 2.7).risk, "STABLE");
+});
+
+test("bank-shot bonuses require a bounce and cap reckless-science payout", () => {
+  assert.equal(calculateBankShotBonus("ferric", 1, 0), 0);
+  assert.equal(calculateBankShotBonus("ferric", 1, 1), 25);
+  assert.equal(calculateBankShotBonus("ferric", 1, 3), 47);
+  assert.equal(calculateBankShotBonus("ferric", 1, 20), 58);
 });
 
 test("only airborne cargo inside the receiver gate counts as airmail", () => {

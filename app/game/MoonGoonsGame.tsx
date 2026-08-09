@@ -12,6 +12,7 @@ import {
   advanceSuitRecovery,
   applySuitDamage as calculateSuitDamage,
   canAirmailCargo,
+  calculateBankShotBonus,
   calculateCargoBounce,
   calculateCargoImpact,
   calculateCargoValue,
@@ -21,6 +22,7 @@ import {
   formatTime,
   nextMissionSeed,
   normalizeControlSettings,
+  predictCargoThrow,
   registerRepairStrike,
   seededRandom,
   type CargoKind,
@@ -93,6 +95,8 @@ type Snapshot = {
   repairProgress: number;
   repairsCompleted: number;
   airmailDeliveries: number;
+  bankShotDeliveries: number;
+  stuntBonus: number;
   cargoBounces: number;
   brokenSamples: number;
   missionSeed: number;
@@ -103,6 +107,8 @@ type Snapshot = {
   carrying: string | null;
   cargoCondition: number | null;
   cargoStructure: string | null;
+  throwRisk: "STABLE" | "RISKY" | "SEVERE" | "SHATTER" | null;
+  throwDistance: number | null;
   message: string;
   scanCooldown: number;
   depositsSecured: number;
@@ -1032,6 +1038,8 @@ export function MoonGoonsGame() {
   const repairProgressRef = useRef(0);
   const repairsCompletedRef = useRef(0);
   const airmailDeliveriesRef = useRef(0);
+  const bankShotDeliveriesRef = useRef(0);
+  const stuntBonusRef = useRef(0);
   const cargoBouncesRef = useRef(0);
   const brokenSamplesRef = useRef(0);
   const suitIntegrityRef = useRef(100);
@@ -1075,6 +1083,8 @@ export function MoonGoonsGame() {
     repairProgress: 0,
     repairsCompleted: 0,
     airmailDeliveries: 0,
+    bankShotDeliveries: 0,
+    stuntBonus: 0,
     cargoBounces: 0,
     brokenSamples: 0,
     missionSeed: INITIAL_MISSION_SEED,
@@ -1085,6 +1095,8 @@ export function MoonGoonsGame() {
     carrying: null,
     cargoCondition: null,
     cargoStructure: null,
+    throwRisk: null,
+    throwDistance: null,
     message: INITIAL_MESSAGE,
     scanCooldown: 0,
     depositsSecured: 0,
@@ -1307,6 +1319,38 @@ export function MoonGoonsGame() {
     const drillGlow = new THREE.PointLight(palette.coral, 0, 8, 2);
     scene.add(drillGlow);
 
+    const trajectoryGuide = new THREE.Group();
+    const trajectoryMaterial = new THREE.MeshBasicMaterial({
+      color: palette.cyan,
+      transparent: true,
+      opacity: 0.76,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const trajectoryGeometry = new THREE.SphereGeometry(0.095, 8, 6);
+    const trajectoryDots = Array.from({ length: 24 }, (_, index) => {
+      const dot = new THREE.Mesh(trajectoryGeometry, trajectoryMaterial);
+      dot.scale.setScalar(0.72 + index * 0.018);
+      trajectoryGuide.add(dot);
+      return dot;
+    });
+    const landingMaterial = new THREE.MeshBasicMaterial({
+      color: palette.cyan,
+      transparent: true,
+      opacity: 0.72,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+      blending: THREE.AdditiveBlending,
+    });
+    const landingMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.68, 1.02, 28),
+      landingMaterial,
+    );
+    landingMarker.rotation.x = -Math.PI / 2;
+    trajectoryGuide.add(landingMarker);
+    trajectoryGuide.visible = false;
+    scene.add(trajectoryGuide);
+
     const dustBursts = Array.from({ length: 12 }, () => {
       const mesh = new THREE.Mesh(
         new THREE.RingGeometry(0.34, 0.56, 18),
@@ -1355,6 +1399,7 @@ export function MoonGoonsGame() {
     let repairKick = 0;
     let damageCooldown = 0;
     let airmailFlash = 0;
+    let currentThrowPrediction: ReturnType<typeof predictCargoThrow> | null = null;
     let animationFrame = 0;
     let previous = performance.now();
 
@@ -1437,6 +1482,8 @@ export function MoonGoonsGame() {
       repairProgressRef.current = 0;
       repairsCompletedRef.current = 0;
       airmailDeliveriesRef.current = 0;
+      bankShotDeliveriesRef.current = 0;
+      stuntBonusRef.current = 0;
       cargoBouncesRef.current = 0;
       brokenSamplesRef.current = 0;
       suitIntegrityRef.current = 100;
@@ -1454,6 +1501,8 @@ export function MoonGoonsGame() {
       repairKick = 0;
       damageCooldown = 0;
       airmailFlash = 0;
+      currentThrowPrediction = null;
+      trajectoryGuide.visible = false;
       dustBursts.forEach((burst) => {
         burst.age = 1;
         burst.mesh.visible = false;
@@ -2068,17 +2117,30 @@ export function MoonGoonsGame() {
                 )
               ) {
                 const earned = calculateCargoValue(deposit.kind, deposit.condition);
+                const bankBounces = deposit.bounceCount;
+                const bankBonus = calculateBankShotBonus(
+                  deposit.kind,
+                  deposit.condition,
+                  bankBounces,
+                );
                 deposit.state = "secured";
                 deposit.group.visible = false;
                 deposit.velocity.set(0, 0, 0);
                 deposit.isBallistic = false;
                 deposit.bounceCount = 0;
-                scoreRef.current += earned;
+                scoreRef.current += earned + bankBonus;
                 airmailDeliveriesRef.current += 1;
+                if (bankBounces > 0) {
+                  bankShotDeliveriesRef.current += 1;
+                  stuntBonusRef.current += bankBonus;
+                }
                 airmailFlash = 1;
                 emitDustBurst(CARGO_RECEIVER_POSITION, 1.45);
                 cameraImpact = Math.max(cameraImpact, 0.32);
-                messageRef.current = `AIRMAIL ACCEPTED! ${cargoData[deposit.kind].name} secured for ¢${earned}. No carrying required.`;
+                messageRef.current =
+                  bankBounces > 0
+                    ? `BANK SHOT! ${cargoData[deposit.kind].name} ricochet ×${bankBounces} secured for ¢${earned} + ¢${bankBonus} reckless-science bonus.`
+                    : `AIRMAIL ACCEPTED! ${cargoData[deposit.kind].name} secured for ¢${earned}. No carrying required.`;
                 sound("secure");
                 return;
               }
@@ -2304,13 +2366,13 @@ export function MoonGoonsGame() {
                 held.group.position.y = throwing ? 2.4 + playerHeight : 0.62;
                 held.group.scale.setScalar(1);
                 if (throwing) {
-                  const throwSpeed = held.kind === "platinum" ? 6.1 : 8.2;
-                  const throwLift = held.kind === "platinum" ? 2.7 : 3.5;
                   held.velocity
                     .copy(dropDirection)
-                    .setLength(throwSpeed)
+                    .setLength(cargoData[held.kind].throwSpeed)
                     .addScaledVector(velocity, 0.42);
-                  held.velocity.y = throwLift + Math.max(0, verticalVelocity * 0.35);
+                  held.velocity.y =
+                    cargoData[held.kind].throwLift +
+                    Math.max(0, verticalVelocity * 0.35);
                   held.isBallistic = true;
                   held.bounceCount = 0;
                 } else {
@@ -2435,6 +2497,76 @@ export function MoonGoonsGame() {
       world.earthCloud.rotation.y -= dt * 0.026;
 
       const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(astronaut.quaternion);
+      const heldForGuide = deposits.find(
+        (deposit) => deposit.id === carryingRef.current,
+      );
+      const showTrajectory =
+        phase === "active" &&
+        heldForGuide !== undefined &&
+        !downedRef.current &&
+        !notesOpenRef.current &&
+        !settingsOpenRef.current &&
+        astronaut.position.distanceTo(CARGO_RECEIVER_POSITION) >= 3.8;
+
+      if (showTrajectory && heldForGuide) {
+        const throwOrigin = astronaut.position
+          .clone()
+          .add(
+            new THREE.Vector3(0, 0, -2.3).applyQuaternion(
+              astronaut.quaternion,
+            ),
+          );
+        throwOrigin.y = 2.4 + playerHeight;
+        const throwVelocity = new THREE.Vector3(0, 0, -2.3)
+          .applyQuaternion(astronaut.quaternion)
+          .setLength(cargoData[heldForGuide.kind].throwSpeed)
+          .addScaledVector(velocity, 0.42);
+        throwVelocity.y =
+          cargoData[heldForGuide.kind].throwLift +
+          Math.max(0, verticalVelocity * 0.35);
+        currentThrowPrediction = predictCargoThrow(
+          heldForGuide.kind,
+          heldForGuide.condition,
+          throwOrigin.y,
+          Math.hypot(throwVelocity.x, throwVelocity.z),
+          throwVelocity.y,
+          MOON_GRAVITY,
+        );
+        const riskColor =
+          currentThrowPrediction.risk === "SHATTER"
+            ? palette.red
+            : currentThrowPrediction.risk === "SEVERE"
+              ? palette.coral
+              : currentThrowPrediction.risk === "RISKY"
+                ? palette.yellow
+                : palette.cyan;
+        trajectoryMaterial.color.setHex(riskColor);
+        landingMaterial.color.setHex(riskColor);
+        trajectoryGuide.visible = true;
+        trajectoryDots.forEach((dot, index) => {
+          const sampleTime =
+            currentThrowPrediction!.flightTime *
+            ((index + 1) / trajectoryDots.length);
+          dot.position
+            .copy(throwOrigin)
+            .addScaledVector(throwVelocity, sampleTime);
+          dot.position.y -= 0.5 * MOON_GRAVITY * sampleTime * sampleTime;
+          dot.visible = dot.position.y >= 0.62;
+        });
+        landingMarker.position.set(
+          throwOrigin.x +
+            throwVelocity.x * currentThrowPrediction.flightTime,
+          0.11,
+          throwOrigin.z +
+            throwVelocity.z * currentThrowPrediction.flightTime,
+        );
+        landingMarker.rotation.z -= dt * 0.72;
+        landingMarker.scale.setScalar(1 + Math.sin(now * 0.009) * 0.11);
+      } else {
+        trajectoryGuide.visible = false;
+        currentThrowPrediction = null;
+      }
+
       const desiredCamera = astronaut.position
         .clone()
         .addScaledVector(forward, -10.5)
@@ -2524,7 +2656,11 @@ export function MoonGoonsGame() {
           prompt =
             receiverDistance < 3.8
               ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
-              : `E DROP · SHIFT+E AIRMAIL · BAY ${Math.round(receiverDistance)}m`;
+              : currentThrowPrediction
+                ? `E DROP · SHIFT+E THROW · ${currentThrowPrediction.risk} @ ${Math.round(
+                    currentThrowPrediction.horizontalDistance,
+                  )}m · BAY ${Math.round(receiverDistance)}m`
+                : `E DROP · SHIFT+E THROW · BAY ${Math.round(receiverDistance)}m`;
         } else if (
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
@@ -2607,6 +2743,8 @@ export function MoonGoonsGame() {
           repairProgress: repairProgressRef.current,
           repairsCompleted: repairsCompletedRef.current,
           airmailDeliveries: airmailDeliveriesRef.current,
+          bankShotDeliveries: bankShotDeliveriesRef.current,
+          stuntBonus: stuntBonusRef.current,
           cargoBounces: cargoBouncesRef.current,
           brokenSamples: brokenSamplesRef.current,
           missionSeed: missionSeedRef.current,
@@ -2617,6 +2755,11 @@ export function MoonGoonsGame() {
           carrying: held ? cargoData[held.kind].name : null,
           cargoCondition: held ? held.condition : null,
           cargoStructure: held ? cargoData[held.kind].structure : null,
+          throwRisk: held && currentThrowPrediction ? currentThrowPrediction.risk : null,
+          throwDistance:
+            held && currentThrowPrediction
+              ? currentThrowPrediction.horizontalDistance
+              : null,
           message: messageRef.current,
           scanCooldown: scanCooldownRef.current,
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
@@ -2681,6 +2824,8 @@ export function MoonGoonsGame() {
       repairProgress: 0,
       repairsCompleted: 0,
       airmailDeliveries: 0,
+      bankShotDeliveries: 0,
+      stuntBonus: 0,
       cargoBounces: 0,
       brokenSamples: 0,
       missionSeed: missionSeedRef.current,
@@ -2691,6 +2836,8 @@ export function MoonGoonsGame() {
       carrying: null,
       cargoCondition: null,
       cargoStructure: null,
+      throwRisk: null,
+      throwDistance: null,
       message: messageRef.current,
       scanCooldown: 0,
       depositsSecured: 0,
@@ -2722,7 +2869,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 016 // MISSION DIRECTOR</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 017 // MISSION DIRECTOR</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -2799,11 +2946,12 @@ export function MoonGoonsGame() {
             </div>
             <div className={styles.miniStats}>
               <span>
-                {snapshot.depositsSecured} samples secured · {snapshot.airmailDeliveries}{" "}
-                airmail
+                {snapshot.depositsSecured} secured · {snapshot.airmailDeliveries}{" "}
+                airmail · {snapshot.bankShotDeliveries} bank shots
               </span>
               <span>
-                {snapshot.cargoBounces} cargo bounces · {snapshot.brokenSamples} broken
+                {snapshot.cargoBounces} bounces · {snapshot.brokenSamples} broken · ¢
+                {snapshot.stuntBonus} bonus
               </span>
               <span>
                 {snapshot.carrying
@@ -2957,8 +3105,12 @@ export function MoonGoonsGame() {
             <p>{snapshot.message}</p>
           </div>
 
-          <div className={styles.actionPrompt}>
-            <span>CONTEXT ACTION</span>
+          <div className={styles.actionPrompt} data-risk={snapshot.throwRisk ?? undefined}>
+            <span>
+              {snapshot.throwRisk
+                ? "FIRST IMPACT PREDICTION // RICOCHETS NOT INCLUDED"
+                : "CONTEXT ACTION"}
+            </span>
             <strong>{snapshot.prompt}</strong>
           </div>
 
@@ -3002,8 +3154,8 @@ export function MoonGoonsGame() {
               </div>
               <div>
                 <span>03</span>
-                <strong>SURVIVE</strong>
-                <p>Shift+E throws cargo. Samples bounce, degrade, and fragile vials shatter.</p>
+                <strong>THROW</strong>
+                <p>The arc predicts first impact. Ricochet into the bay for a bank-shot bonus.</p>
               </div>
             </div>
             <button type="button" onClick={resetMission}>
@@ -3053,6 +3205,14 @@ export function MoonGoonsGame() {
               <div>
                 <span>SAMPLES BROKEN</span>
                 <strong>{snapshot.brokenSamples}</strong>
+              </div>
+              <div>
+                <span>BANK SHOTS</span>
+                <strong>{snapshot.bankShotDeliveries}</strong>
+              </div>
+              <div>
+                <span>STUNT BONUS</span>
+                <strong>¢{snapshot.stuntBonus}</strong>
               </div>
             </div>
             <button type="button" onClick={resetMission}>

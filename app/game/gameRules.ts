@@ -34,6 +34,8 @@ export type CargoDefinition = {
   breakSpeed: number | null;
   restitution: number;
   horizontalRetention: number;
+  throwSpeed: number;
+  throwLift: number;
 };
 
 export type DepositDefinition = {
@@ -56,6 +58,8 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     breakSpeed: null,
     restitution: 0.54,
     horizontalRetention: 0.86,
+    throwSpeed: 8.2,
+    throwLift: 3.5,
   },
   glass: {
     name: "Lunar Glass",
@@ -70,6 +74,8 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     breakSpeed: null,
     restitution: 0.38,
     horizontalRetention: 0.78,
+    throwSpeed: 8.2,
+    throwLift: 3.5,
   },
   platinum: {
     name: "Platinum Core",
@@ -84,6 +90,8 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     breakSpeed: null,
     restitution: 0.27,
     horizontalRetention: 0.7,
+    throwSpeed: 6.1,
+    throwLift: 2.7,
   },
   vial: {
     name: "Cryogenic Sample Vial",
@@ -98,6 +106,8 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     breakSpeed: 10.2,
     restitution: 0.46,
     horizontalRetention: 0.82,
+    throwSpeed: 8.2,
+    throwLift: 3.5,
   },
 };
 
@@ -227,6 +237,56 @@ export function calculateCargoBounce(
     verticalSpeed: continues ? verticalSpeed : 0,
     horizontalRetention: continues ? data.horizontalRetention : 0,
   };
+}
+
+export function predictCargoThrow(
+  kind: CargoKind,
+  condition: number,
+  originHeight: number,
+  horizontalSpeed: number,
+  verticalSpeed: number,
+  gravity = 4.35,
+) {
+  const safeGravity = Math.max(0.01, gravity);
+  const heightAboveGround = Math.max(0, originHeight - 0.65);
+  const safeVerticalSpeed = Number.isFinite(verticalSpeed) ? verticalSpeed : 0;
+  const safeHorizontalSpeed = Number.isFinite(horizontalSpeed)
+    ? Math.max(0, horizontalSpeed)
+    : 0;
+  const discriminant = Math.max(
+    0,
+    safeVerticalSpeed * safeVerticalSpeed +
+      2 * safeGravity * heightAboveGround,
+  );
+  const flightTime =
+    (safeVerticalSpeed + Math.sqrt(discriminant)) / safeGravity;
+  const finalVerticalSpeed = safeVerticalSpeed - safeGravity * flightTime;
+  const impactSpeed = Math.hypot(safeHorizontalSpeed, finalVerticalSpeed);
+  const impact = calculateCargoImpact(kind, condition, impactSpeed);
+  const conditionLoss = Math.max(0, condition - impact.condition);
+  return {
+    flightTime,
+    horizontalDistance: safeHorizontalSpeed * flightTime,
+    impactSpeed,
+    condition: impact.condition,
+    risk: impact.broken
+      ? ("SHATTER" as const)
+      : conditionLoss >= 0.22
+        ? ("SEVERE" as const)
+        : conditionLoss >= 0.07
+          ? ("RISKY" as const)
+          : ("STABLE" as const),
+  };
+}
+
+export function calculateBankShotBonus(
+  kind: CargoKind,
+  condition: number,
+  bounceCount: number,
+) {
+  if (bounceCount <= 0) return 0;
+  const multiplier = Math.min(0.32, 0.08 + bounceCount * 0.06);
+  return Math.round(calculateCargoValue(kind, condition) * multiplier);
 }
 
 export function canAirmailCargo(
