@@ -1,4 +1,4 @@
-export const PROGRESSION_SAVE_VERSION = 1;
+export const PROGRESSION_SAVE_VERSION = 2;
 export const MAX_EQUIPPED_UPGRADES = 2;
 
 export type ContractId = "standard_procurement" | "rapid_recovery" | "hazard_bonus";
@@ -9,11 +9,12 @@ export type UpgradeId =
   | "cargo_harness";
 
 export type ProgressionSave = {
-  version: 1;
+  version: 2;
   credits: number;
   research: number;
   successfulMissions: number;
   failedMissions: number;
+  totalRepairCredits: number;
   ownedUpgradeIds: UpgradeId[];
   equippedUpgradeIds: UpgradeId[];
 };
@@ -115,6 +116,7 @@ export const DEFAULT_PROGRESSION: ProgressionSave = {
   research: 0,
   successfulMissions: 0,
   failedMissions: 0,
+  totalRepairCredits: 0,
   ownedUpgradeIds: [],
   equippedUpgradeIds: [],
 };
@@ -151,6 +153,9 @@ export function normalizeProgressionSave(value: unknown): ProgressionSave {
       source.successfulMissions ?? source.missionsCompleted,
     ),
     failedMissions: safeInteger(source.failedMissions ?? source.missionsFailed),
+    totalRepairCredits: safeInteger(
+      source.totalRepairCredits ?? source.repairCreditsSpent,
+    ),
     ownedUpgradeIds,
     equippedUpgradeIds,
   };
@@ -217,6 +222,8 @@ export function calculateMissionSettlement({
   score,
   timeRemaining,
   samplesSecured,
+  repairsCompleted = 0,
+  suitRecoveries = 0,
 }: {
   progression: ProgressionSave;
   contractId: ContractId;
@@ -224,30 +231,46 @@ export function calculateMissionSettlement({
   score: number;
   timeRemaining: number;
   samplesSecured: number;
+  repairsCompleted?: number;
+  suitRecoveries?: number;
 }) {
   const contract = CONTRACTS[contractId];
   const safeScore = Math.max(0, score);
   const salvageCredits = Math.floor(safeScore * (success ? 0.1 : 0.045));
   const timeBonus = success ? Math.floor(Math.max(0, timeRemaining) * 0.7) : 0;
-  const creditsEarned = Math.max(
+  const grossCreditsEarned = Math.max(
     25,
     (success ? contract.creditReward : 25) + salvageCredits + timeBonus,
   );
+  const quotedRepairCredits =
+    Math.max(0, Math.trunc(repairsCompleted)) * 12 +
+    Math.max(0, Math.trunc(suitRecoveries)) * 30;
+  const repairCreditsCharged = Math.min(
+    quotedRepairCredits,
+    Math.max(0, grossCreditsEarned - 25),
+  );
+  const creditsEarned = grossCreditsEarned - repairCreditsCharged;
   const researchEarned = success
     ? contract.researchReward + Math.floor(Math.max(0, samplesSecured) / 3)
     : samplesSecured >= 2
       ? 1
       : 0;
 
+  const nextProgression = {
+    ...progression,
+    credits: progression.credits + creditsEarned,
+    research: progression.research + researchEarned,
+    successfulMissions: progression.successfulMissions + (success ? 1 : 0),
+    failedMissions: progression.failedMissions + (success ? 0 : 1),
+    totalRepairCredits:
+      progression.totalRepairCredits + repairCreditsCharged,
+  } satisfies ProgressionSave;
+
   return {
+    grossCreditsEarned,
+    repairCreditsCharged,
     creditsEarned,
     researchEarned,
-    progression: {
-      ...progression,
-      credits: progression.credits + creditsEarned,
-      research: progression.research + researchEarned,
-      successfulMissions: progression.successfulMissions + (success ? 1 : 0),
-      failedMissions: progression.failedMissions + (success ? 0 : 1),
-    } satisfies ProgressionSave,
+    progression: nextProgression,
   };
 }

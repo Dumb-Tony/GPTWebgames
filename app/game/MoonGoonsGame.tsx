@@ -6,6 +6,7 @@ import { ControlSettingsPanel } from "./ControlSettingsPanel";
 import { CrewLobby, CrewRoster } from "./CrewLobby";
 import { FieldNotes } from "./FieldNotes";
 import { OperationsHub } from "./OperationsHub";
+import { OrbitalHub, type HubStationId } from "./OrbitalHub";
 import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
@@ -76,6 +77,12 @@ const CARGO_RECEIVER_POSITION = new THREE.Vector3(4.8, 0, 1.3)
 const CONTROL_SETTINGS_KEY = "moon-goons-control-settings-v1";
 const CREW_SESSION_KEY = "moon-goons-crew-session-v1";
 const PROGRESSION_KEY = "moon-goons-progression-v1";
+const HUB_STATION_HEADINGS: Record<HubStationId, string> = {
+  contracts: "CONTRACT CONTROL",
+  equipment: "EQUIPMENT CAGE",
+  crew: "CREW LINK UPLINK",
+  maintenance: "MAINTENANCE BENCH",
+};
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
@@ -1167,10 +1174,14 @@ export function MoonGoonsGame() {
     }
   });
   const progressionRef = useRef<ProgressionSave>(progression);
+  const [hubTerminalOpen, setHubTerminalOpen] = useState(false);
+  const [hubStation, setHubStation] = useState<HubStationId>("contracts");
   const [selectedContractId, setSelectedContractId] = useState<ContractId>(
     "standard_procurement",
   );
   const [lastSettlement, setLastSettlement] = useState<{
+    grossCreditsEarned: number;
+    repairCreditsCharged: number;
     creditsEarned: number;
     researchEarned: number;
   } | null>(null);
@@ -3859,10 +3870,14 @@ export function MoonGoonsGame() {
       score: snapshot.score,
       timeRemaining: snapshot.time,
       samplesSecured: snapshot.depositsSecured,
+      repairsCompleted: snapshot.repairsCompleted,
+      suitRecoveries: snapshot.suitRecoveries,
     });
     progressionRef.current = settlement.progression;
     setProgression(settlement.progression);
     setLastSettlement({
+      grossCreditsEarned: settlement.grossCreditsEarned,
+      repairCreditsCharged: settlement.repairCreditsCharged,
       creditsEarned: settlement.creditsEarned,
       researchEarned: settlement.researchEarned,
     });
@@ -3870,15 +3885,23 @@ export function MoonGoonsGame() {
     snapshot.contractId,
     snapshot.depositsSecured,
     snapshot.phase,
+    snapshot.repairsCompleted,
     snapshot.score,
+    snapshot.suitRecoveries,
     snapshot.time,
   ]);
+
+  const openHubStation = useCallback((station: HubStationId) => {
+    setHubStation(station);
+    setHubTerminalOpen(true);
+  }, []);
 
   const returnToHub = useCallback(() => {
     if (crewSessionRef.current?.role === "guest") return;
     phaseRef.current = "briefing";
     authoritativeStateRef.current = null;
     incomingAuthorityRef.current = null;
+    setHubTerminalOpen(false);
     setSnapshot((current) => ({ ...current, phase: "briefing" }));
   }, []);
 
@@ -3887,6 +3910,7 @@ export function MoonGoonsGame() {
     if (session?.role === "guest") return;
     activeContractIdRef.current = selectedContractId;
     missionRunIdRef.current += 1;
+    setHubTerminalOpen(false);
     setLastSettlement(null);
     const contract = CONTRACTS[selectedContractId];
     const thrusterCapacity = hasEquippedUpgrade(
@@ -3960,17 +3984,27 @@ export function MoonGoonsGame() {
         aria-label="Playable third-person 3D Practice Moon extraction mission"
       />
 
+      {snapshot.phase === "briefing" && (
+        <OrbitalHub
+          credits={progression.credits}
+          research={progression.research}
+          lastRepairBill={lastSettlement?.repairCreditsCharged ?? 0}
+          interactive={!hubTerminalOpen && !notesOpen && !settingsOpen}
+          onOpenStation={openHubStation}
+        />
+      )}
+
       <header className={styles.topbar}>
         <div className={styles.brand}>
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 020 // ORBITAL OPS</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 021 // WALKABLE HUB</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
-          <span>DEPARTURE WINDOW</span>
-          <strong>{formatTime(snapshot.time)}</strong>
+          <span>{snapshot.phase === "briefing" ? "ORBITAL SHIFT" : "DEPARTURE WINDOW"}</span>
+          <strong>{snapshot.phase === "briefing" ? "ON DUTY" : formatTime(snapshot.time)}</strong>
         </div>
       </header>
 
@@ -4267,24 +4301,31 @@ export function MoonGoonsGame() {
         </>
       )}
 
-      {snapshot.phase === "briefing" && (
-        <section className={styles.overlay}>
-          <div className={styles.briefingCard}>
-            <div className={styles.keyArt} aria-hidden="true" />
+      {snapshot.phase === "briefing" && hubTerminalOpen && (
+        <section className={`${styles.overlay} ${styles.hubTerminalOverlay}`}>
+          <div className={`${styles.briefingCard} ${styles.hubTerminalCard}`}>
+            <button
+              type="button"
+              className={styles.hubTerminalClose}
+              onClick={() => setHubTerminalOpen(false)}
+              aria-label="Close operations terminal and return to the ship deck"
+            >
+              ×
+            </button>
             <div className={styles.companyLine}>
               <span>S.P.A.C.E.</span>
-              SCIENTIFIC PROCUREMENT AND COLLECTION ENTERPRISE
+              {HUB_STATION_HEADINGS[hubStation]} {"// SHIPBOARD TERMINAL"}
             </div>
-            <p className={styles.kicker}>HUB + PROGRESSION 8A // ORBITAL OPERATIONS</p>
+            <p className={styles.kicker}>HUB + PROGRESSION 8B // PHYSICAL OPERATIONS DECK</p>
             <h1>
-              CLOCK IN.
+              FILE PAPERWORK.
               <br />
-              <em>CASH OUT.</em>
+              <em>THEN PANIC.</em>
             </h1>
             <p className={styles.lede}>
-              Choose a contract, configure two field modules, and turn questionable
-              science into credits and research. Failure still pays recovery wages, so
-              S.P.A.C.E. can always afford to send you somewhere inadvisable again.
+              Contract, equipment, crew, and maintenance records are available at every
+              station because S.P.A.C.E. purchased one software license and refuses to
+              buy another. Configure the run, then launch from Crew Link below.
             </p>
             <OperationsHub
               progression={progression}
@@ -4307,7 +4348,9 @@ export function MoonGoonsGame() {
               onLaunch={resetMission}
               onSolo={resetMission}
             />
-            <small>Keyboard + mouse recommended · Escape releases the camera</small>
+            <small>
+              Personal career data stays on this device · Crew mission data is shared
+            </small>
           </div>
         </section>
       )}
@@ -4361,7 +4404,15 @@ export function MoonGoonsGame() {
                 <strong>¢{snapshot.stuntBonus}</strong>
               </div>
               <div>
-                <span>CAREER PAY</span>
+                <span>MISSION GROSS</span>
+                <strong>¢{lastSettlement?.grossCreditsEarned ?? 0}</strong>
+              </div>
+              <div>
+                <span>REPAIR INVOICE</span>
+                <strong>-¢{lastSettlement?.repairCreditsCharged ?? 0}</strong>
+              </div>
+              <div>
+                <span>CAREER NET PAY</span>
                 <strong>¢{lastSettlement?.creditsEarned ?? 0}</strong>
               </div>
               <div>

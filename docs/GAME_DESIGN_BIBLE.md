@@ -2253,6 +2253,26 @@ This plan is written so an AI coding assistant such as Claude can implement one 
   expenses need a recovery-safe economy pass, and surveyed destinations must connect to
   playable missions as their content ships.
 
+**Prototype status — Build 021**
+
+- Replaced the full-screen starting console with a walkable third-person orbital ship
+  interior. Contract Control, the Equipment Cage, Crew Link, and Maintenance are physical,
+  color-coded stations activated by proximity, with a direct terminal button retained as
+  an accessibility fallback.
+- Added explicit in-world ownership labels: credits, research, career history, and modules
+  are personal to the current device; the contract, timer, cargo, world state, and score are
+  shared for the active crew run. Visiting players never spend the mission lead's credits.
+- Upgraded career persistence to schema version 2 and added a direct migration test from
+  the previous version. The save records lifetime maintenance spending while preserving all
+  stable contract and equipment identifiers.
+- Added maintenance invoices to mission settlement. Each drill repair costs 12 credits and
+  each emergency suit reboot costs 30, but charges are deducted only from the current run's
+  gross pay and are capped so every mission still deposits at least 25 credits. Banked
+  savings can never be consumed and the minimum free loadout remains available.
+- The core Milestone 8 acceptance criteria are now met. Rust Belt and Icebox remain surveyed
+  dossiers rather than fake destination variants; their playable maps belong to Milestone 10's
+  content pipeline, after the Practice Moon vertical slice receives Milestone 9 polish.
+
 ## Milestone 9: Vertical Slice Polish
 
 **Deliverables**

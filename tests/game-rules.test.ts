@@ -44,17 +44,18 @@ import {
 
 test("career saves migrate old fields and discard unknown equipment", () => {
   const migrated = normalizeProgressionSave({
-    version: 0,
-    money: 730.9,
-    science: 9,
-    missionsCompleted: 3,
-    missionsFailed: 2,
-    upgrades: ["survey_array", "definitely_illegal", "survey_array"],
-    equipped: ["survey_array", "cargo_harness"],
+    version: 1,
+    credits: 730.9,
+    research: 9,
+    successfulMissions: 3,
+    failedMissions: 2,
+    ownedUpgradeIds: ["survey_array", "definitely_illegal", "survey_array"],
+    equippedUpgradeIds: ["survey_array", "cargo_harness"],
   });
-  assert.equal(migrated.version, 1);
+  assert.equal(migrated.version, 2);
   assert.equal(migrated.credits, 730);
   assert.equal(migrated.research, 9);
+  assert.equal(migrated.totalRepairCredits, 0);
   assert.deepEqual(migrated.ownedUpgradeIds, ["survey_array"]);
   assert.deepEqual(migrated.equippedUpgradeIds, ["survey_array"]);
 });
@@ -72,6 +73,39 @@ test("failed missions still pay recovery wages and cannot brick the free loadout
   assert.equal(settlement.researchEarned, 0);
   assert.equal(settlement.progression.failedMissions, 1);
   assert.equal(settlement.progression.credits, 25);
+});
+
+test("maintenance invoices reduce mission pay without touching savings or recovery wages", () => {
+  const funded = normalizeProgressionSave({ credits: 500, research: 4 });
+  const settlement = calculateMissionSettlement({
+    progression: funded,
+    contractId: "standard_procurement",
+    success: true,
+    score: 900,
+    timeRemaining: 10,
+    samplesSecured: 3,
+    repairsCompleted: 2,
+    suitRecoveries: 1,
+  });
+  assert.equal(settlement.grossCreditsEarned, 267);
+  assert.equal(settlement.repairCreditsCharged, 54);
+  assert.equal(settlement.creditsEarned, 213);
+  assert.equal(settlement.progression.credits, 713);
+  assert.equal(settlement.progression.totalRepairCredits, 54);
+
+  const protectedFailure = calculateMissionSettlement({
+    progression: funded,
+    contractId: "standard_procurement",
+    success: false,
+    score: 0,
+    timeRemaining: 0,
+    samplesSecured: 0,
+    repairsCompleted: 99,
+    suitRecoveries: 99,
+  });
+  assert.equal(protectedFailure.repairCreditsCharged, 0);
+  assert.equal(protectedFailure.creditsEarned, 25);
+  assert.equal(protectedFailure.progression.credits, 525);
 });
 
 test("upgrades use stable ids, enforce costs, and cap equipped modules", () => {

@@ -40,6 +40,7 @@ export function OperationsHub({
           <span>
             <b>{progression.successfulMissions}</b> ACCEPTABLE MISSIONS
           </span>
+          <span><b>¢{progression.totalRepairCredits}</b> MAINTENANCE PAID</span>
         </div>
       </header>
 
@@ -152,10 +153,19 @@ export function OperationsHub({
         <p className={styles.freeLoadout}>
           COMPANY MINIMUM LOADOUT IS ALWAYS FREE: ISSUE DRILL · SCANNER · TETHER · EVA THRUSTER
         </p>
+        <div className={styles.maintenancePolicy}>
+          <span>04 // MAINTENANCE POLICY</span>
+          <strong>REPAIRS ARE DEDUCTED FROM MISSION PAY — NEVER FROM YOUR SAVINGS.</strong>
+          <small>
+            Every run still deposits at least ¢25. Tool jams cost ¢12 and emergency suit
+            reboots cost ¢30 after recovery caps are applied.
+          </small>
+        </div>
       </div>
       <footer className={styles.hubFooter}>
-        Personal progression is saved on this device. Crew mission score and contract
-        state are shared; your credits, research, and equipment are not.
+        PERSONAL: credits, research, career record, and installed modules stay on this
+        device. CREW-SHARED: contract, timer, world state, cargo, and mission score belong
+        to the current run. Visiting players never spend the mission lead&apos;s credits.
       </footer>
     </section>
   );

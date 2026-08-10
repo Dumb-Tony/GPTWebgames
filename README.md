@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 020: the first Hub and Progression slice, adding an orbital operations console, replayable contract profiles, persistent personal credits and research, destination dossiers, and equipment modules with real field effects.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 021: a physical orbital hub with a walkable 3D operations deck, interactive contract/equipment/crew/maintenance stations, replayable contract profiles, persistent personal progression, recovery-safe repair invoices, destination dossiers, and equipment modules with real field effects.
 
 ## Playable build
 
@@ -49,6 +49,11 @@ The first prototype includes:
 - Two-slot mission loadouts plus an always-free company minimum loadout
 - Destination dossiers that reveal future expeditions as research accumulates
 - Recovery wages after failed missions so progression can never block another launch
+- A walkable third-person orbital ship interior between missions
+- Four proximity-activated ship stations for contracts, equipment, Crew Link, and maintenance
+- Clear in-world labels separating personal device progress from shared crew mission state
+- Automatic tool and suit repair invoices deducted only from mission earnings
+- A guaranteed minimum net payout so repairs can never consume savings or block another run
 
 ## Shared playtesting
 
@@ -99,7 +104,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 020 begins Milestone 8: Hub and Progression. The orbital operations console separates shared crew mission state from personal device-local career progress, offers three host-selected contract profiles, and supports two equipped modules from a stable-ID equipment library. Successful missions award contract pay, salvage bonuses, time bonuses, and research; failed missions still award recovery wages. The Practice Moon remains the only launchable destination while Rust Belt and Icebox dossiers expose future research thresholds. A later Milestone 8 pass should turn the operations console into a walkable ship interior, add repair expenses and shared-versus-personal progression policy for visiting players, and connect surveyed destinations as their maps arrive.
+Build 021 completes the playable Hub and Progression foundation. Players now physically walk around the orbital support vessel between missions and approach lit stations to open the contract, equipment, Crew Link, and maintenance terminal. Version 2 career saves migrate the previous schema, while repair charges are capped against mission earnings and never touch banked credits. The hub explicitly labels personal device progress versus crew-shared run state. Practice Moon remains the launchable vertical-slice destination; Rust Belt and Icebox become playable during the later Content Pipeline milestone.
 
 ## Design references
 
