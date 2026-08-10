@@ -2310,6 +2310,13 @@ This plan is written so an AI coding assistant such as Claude can implement one 
   cue audits, representative music/environmental audio, and measured compatibility results
   are required before the milestone exits.
 
+**Prototype status — Build 023 hotfix**
+
+- Corrected the orbital hub's yaw basis so mouse and right-stick turns rotate the visible
+  astronaut, camera-relative forward vector, and strafe vector in the same direction.
+  A regression test now locks the expected forward/right vectors at neutral and a
+  ninety-degree right turn.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

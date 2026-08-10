@@ -24,7 +24,10 @@ import {
   renderPixelRatioCap,
   seededRandom,
 } from "../app/game/gameRules.ts";
-import { readStandardGamepad } from "../app/game/gamepad.ts";
+import {
+  headingVectorsFromYaw,
+  readStandardGamepad,
+} from "../app/game/gamepad.ts";
 import { getMissionGuideStep } from "../app/game/onboarding.ts";
 import {
   CREW_INPUT_DOWNED,
@@ -368,6 +371,21 @@ test("standard controllers apply deadzones and expose the complete field control
   assert.equal(input.tether, true);
   assert.equal(input.throwCargo, true);
   assert.equal(input.pingDanger, true);
+});
+
+test("home-base heading keeps forward and strafe aligned with mouse yaw", () => {
+  const facingForward = headingVectorsFromYaw(0);
+  assert.deepEqual(facingForward, {
+    forwardX: -0,
+    forwardZ: -1,
+    rightX: 1,
+    rightZ: -0,
+  });
+  const turnedRight = headingVectorsFromYaw(-Math.PI / 2);
+  assert.ok(turnedRight.forwardX > 0.999);
+  assert.ok(Math.abs(turnedRight.forwardZ) < 0.000001);
+  assert.ok(Math.abs(turnedRight.rightX) < 0.000001);
+  assert.ok(turnedRight.rightZ > 0.999);
 });
 
 test("first-shift guidance advances through the full extraction loop", () => {

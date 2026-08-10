@@ -94,3 +94,13 @@ export function primaryGamepad(
   }
   return null;
 }
+
+export function headingVectorsFromYaw(yaw: number) {
+  const safeYaw = Number.isFinite(yaw) ? yaw : 0;
+  return {
+    forwardX: -Math.sin(safeYaw),
+    forwardZ: -Math.cos(safeYaw),
+    rightX: Math.cos(safeYaw),
+    rightZ: -Math.sin(safeYaw),
+  };
+}

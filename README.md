@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 022: the first Vertical Slice Polish pass, adding contextual first-shift guidance, end-to-end standard controller support, controller-driven menus, accessibility tuning, performance presets, and the walkable orbital operations hub introduced in Build 021.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 023: the first Vertical Slice Polish pass plus corrected home-base heading math, contextual first-shift guidance, end-to-end standard controller support, controller-driven menus, accessibility tuning, performance presets, and the walkable orbital operations hub introduced in Build 021.
 
 ## Playable build
 
@@ -128,7 +128,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 022 begins Milestone 9: Vertical Slice Polish. New players receive one contextual objective at a time from movement through scanning, drilling, cargo handling, quota completion, and extraction. Standard controllers now operate the physical hub, moon mission, menus, and crew callouts. Control Tuning adds camera-impact reduction, HUD scaling, high-contrast instruments, mission-guide visibility, and three render-quality presets. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 023 continues Milestone 9: Vertical Slice Polish and corrects the orbital hub's yaw-to-movement conversion so forward, reverse, and strafing remain camera-relative after turning. New players receive one contextual objective at a time from movement through scanning, drilling, cargo handling, quota completion, and extraction. Standard controllers operate the physical hub, moon mission, menus, and crew callouts. Control Tuning adds camera-impact reduction, HUD scaling, high-contrast instruments, mission-guide visibility, and three render-quality presets. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 

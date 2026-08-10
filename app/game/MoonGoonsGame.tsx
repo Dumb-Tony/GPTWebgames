@@ -4159,7 +4159,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 022 // VERTICAL SLICE POLISH</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 023 // HUB CONTROL FIX</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>

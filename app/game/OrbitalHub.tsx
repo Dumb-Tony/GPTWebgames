@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
-import { primaryGamepad, readStandardGamepad } from "./gamepad";
+import {
+  headingVectorsFromYaw,
+  primaryGamepad,
+  readStandardGamepad,
+} from "./gamepad";
 import { renderPixelRatioCap, type ControlSettings } from "./gameRules";
 import styles from "./game.module.css";
 
@@ -517,8 +521,9 @@ export function OrbitalHub({
 
       const moving = interactiveRef.current && (forwardInput !== 0 || strafeInput !== 0);
       if (moving) {
-        const forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw));
-        const right = new THREE.Vector3(Math.cos(yaw), 0, Math.sin(yaw));
+        const heading = headingVectorsFromYaw(yaw);
+        const forward = new THREE.Vector3(heading.forwardX, 0, heading.forwardZ);
+        const right = new THREE.Vector3(heading.rightX, 0, heading.rightZ);
         const direction = forward
           .multiplyScalar(forwardInput)
           .addScaledVector(right, strafeInput)
@@ -580,7 +585,8 @@ export function OrbitalHub({
       starfield.rotation.y -= dt * 0.003;
       airlockRing.rotation.z += dt * 0.08;
 
-      const forward = new THREE.Vector3(Math.sin(yaw), 0, -Math.cos(yaw));
+      const heading = headingVectorsFromYaw(yaw);
+      const forward = new THREE.Vector3(heading.forwardX, 0, heading.forwardZ);
       const desiredCamera = goon.position
         .clone()
         .addScaledVector(forward, -6.5)
