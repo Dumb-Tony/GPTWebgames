@@ -43,6 +43,7 @@ export function ControlSettingsPanel({
           role="dialog"
           aria-modal="true"
           aria-labelledby="control-settings-title"
+          data-gamepad-scope="true"
         >
           <header className={styles.settingsHeader}>
             <div>
@@ -107,6 +108,81 @@ export function ControlSettingsPanel({
                 onChange={(event) => update({ volume: Number(event.target.value) })}
               />
               <small>Controls scanner, tool, hazard, impact, and suit feedback.</small>
+            </label>
+
+            <label className={styles.rangeSetting}>
+              <span>
+                CAMERA IMPACT
+                <output>{Math.round(settings.cameraShake * 100)}%</output>
+              </span>
+              <input
+                type="range"
+                min="0"
+                max="1"
+                step="0.1"
+                value={settings.cameraShake}
+                onChange={(event) => update({ cameraShake: Number(event.target.value) })}
+              />
+              <small>Reduce or disable landing, tool, and hazard camera shake.</small>
+            </label>
+
+            <label className={styles.rangeSetting}>
+              <span>
+                HUD SCALE
+                <output>{Math.round(settings.hudScale * 100)}%</output>
+              </span>
+              <input
+                type="range"
+                min="0.85"
+                max="1.2"
+                step="0.05"
+                value={settings.hudScale}
+                onChange={(event) => update({ hudScale: Number(event.target.value) })}
+              />
+              <small>Scales mission instruments and instructional overlays.</small>
+            </label>
+
+            <label className={styles.selectSetting}>
+              <span>
+                <strong>RENDER QUALITY</strong>
+                <small>Lower this when frame rate matters more than sharp edges.</small>
+              </span>
+              <select
+                value={settings.renderQuality}
+                onChange={(event) =>
+                  update({
+                    renderQuality: event.target.value as ControlSettings["renderQuality"],
+                  })
+                }
+              >
+                <option value="low">Battery Saver</option>
+                <option value="balanced">Balanced</option>
+                <option value="high">High Detail</option>
+              </select>
+            </label>
+
+            <label className={styles.checkSetting}>
+              <span>
+                <strong>HIGH-CONTRAST HUD</strong>
+                <small>Strengthens panel borders, text, and critical state colors.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.highContrast}
+                onChange={(event) => update({ highContrast: event.target.checked })}
+              />
+            </label>
+
+            <label className={styles.checkSetting}>
+              <span>
+                <strong>FIRST SHIFT GUIDE</strong>
+                <small>Show the contextual six-step mission tutorial.</small>
+              </span>
+              <input
+                type="checkbox"
+                checked={settings.missionGuide}
+                onChange={(event) => update({ missionGuide: event.target.checked })}
+              />
             </label>
           </div>
 

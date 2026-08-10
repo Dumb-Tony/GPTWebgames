@@ -107,6 +107,7 @@ export function FieldNotes({ open, onOpenChange }: FieldNotesProps) {
         id="field-notes-panel"
         className={`${styles.notesPanel} ${open ? styles.notesPanelOpen : ""}`}
         aria-hidden={!open}
+        data-gamepad-scope={open || undefined}
       >
         <header className={styles.notesHeader}>
           <div>
@@ -157,7 +158,7 @@ export function FieldNotes({ open, onOpenChange }: FieldNotesProps) {
             />
           </label>
           <div className={styles.noteSubmitRow}>
-            <small>{content.length}/700 · BUILD 021</small>
+            <small>{content.length}/700 · BUILD 022</small>
             <button type="submit" disabled={saving}>
               {saving ? "TRANSMITTING…" : "ADD SHARED NOTE"}
             </button>

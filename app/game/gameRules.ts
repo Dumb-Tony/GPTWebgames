@@ -14,12 +14,22 @@ export type ControlSettings = {
   lookSensitivity: number;
   invertY: boolean;
   volume: number;
+  cameraShake: number;
+  highContrast: boolean;
+  hudScale: number;
+  renderQuality: "low" | "balanced" | "high";
+  missionGuide: boolean;
 };
 
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   lookSensitivity: 1,
   invertY: false,
   volume: 0.75,
+  cameraShake: 0.8,
+  highContrast: false,
+  hudScale: 1,
+  renderQuality: "balanced",
+  missionGuide: true,
 };
 
 export type CargoKind = "ferric" | "glass" | "platinum" | "vial";
@@ -334,6 +344,9 @@ export function normalizeControlSettings(
 ): ControlSettings {
   const sensitivity = Number(settings?.lookSensitivity);
   const volume = Number(settings?.volume);
+  const cameraShake = Number(settings?.cameraShake);
+  const hudScale = Number(settings?.hudScale);
+  const renderQuality = settings?.renderQuality;
   return {
     lookSensitivity: Number.isFinite(sensitivity)
       ? Math.min(2, Math.max(0.45, sensitivity))
@@ -345,7 +358,33 @@ export function normalizeControlSettings(
     volume: Number.isFinite(volume)
       ? Math.min(1, Math.max(0, volume))
       : DEFAULT_CONTROL_SETTINGS.volume,
+    cameraShake: Number.isFinite(cameraShake)
+      ? Math.min(1, Math.max(0, cameraShake))
+      : DEFAULT_CONTROL_SETTINGS.cameraShake,
+    highContrast:
+      typeof settings?.highContrast === "boolean"
+        ? settings.highContrast
+        : DEFAULT_CONTROL_SETTINGS.highContrast,
+    hudScale: Number.isFinite(hudScale)
+      ? Math.min(1.2, Math.max(0.85, hudScale))
+      : DEFAULT_CONTROL_SETTINGS.hudScale,
+    renderQuality:
+      renderQuality === "low" || renderQuality === "high" || renderQuality === "balanced"
+        ? renderQuality
+        : DEFAULT_CONTROL_SETTINGS.renderQuality,
+    missionGuide:
+      typeof settings?.missionGuide === "boolean"
+        ? settings.missionGuide
+        : DEFAULT_CONTROL_SETTINGS.missionGuide,
   };
+}
+
+export function renderPixelRatioCap(
+  quality: ControlSettings["renderQuality"],
+) {
+  if (quality === "low") return 1;
+  if (quality === "high") return 2;
+  return 1.5;
 }
 
 export function registerRepairStrike(progress: number) {

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as THREE from "three";
+import { primaryGamepad, readStandardGamepad } from "./gamepad";
+import { renderPixelRatioCap, type ControlSettings } from "./gameRules";
 import styles from "./game.module.css";
 
 export type HubStationId = "contracts" | "equipment" | "crew" | "maintenance";
@@ -198,19 +200,23 @@ export function OrbitalHub({
   credits,
   research,
   lastRepairBill,
+  renderQuality,
   interactive,
   onOpenStation,
 }: {
   credits: number;
   research: number;
   lastRepairBill: number;
+  renderQuality: ControlSettings["renderQuality"];
   interactive: boolean;
   onOpenStation: (station: HubStationId) => void;
 }) {
   const mountRef = useRef<HTMLDivElement>(null);
   const interactiveRef = useRef(interactive);
   const openStationRef = useRef(onOpenStation);
+  const qualityRef = useRef(renderQuality);
   const [mouseCaptured, setMouseCaptured] = useState(false);
+  const [controllerConnected, setControllerConnected] = useState(false);
   const [nearestStation, setNearestStation] = useState<HubStation | null>(null);
 
   useEffect(() => {
@@ -221,6 +227,11 @@ export function OrbitalHub({
   useEffect(() => {
     openStationRef.current = onOpenStation;
   }, [onOpenStation]);
+
+  useEffect(() => {
+    qualityRef.current = renderQuality;
+    window.dispatchEvent(new Event("resize"));
+  }, [renderQuality]);
 
   const openFallback = useCallback(() => {
     if (document.pointerLockElement) document.exitPointerLock();
@@ -240,7 +251,9 @@ export function OrbitalHub({
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.65));
+    renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio, renderPixelRatioCap(qualityRef.current)),
+    );
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -405,6 +418,9 @@ export function OrbitalHub({
     const velocity = new THREE.Vector3();
     let nearest: HubStation | null = null;
     let nearestUiId: HubStationId | null = null;
+    let padInteractLatch = false;
+    let padStatusTimer = 0;
+    let lastPadConnected = false;
     let previous = performance.now();
     let animationFrame = 0;
     const keys = new Set<string>();
@@ -449,6 +465,9 @@ export function OrbitalHub({
       const width = mount.clientWidth;
       const height = mount.clientHeight;
       renderer.setSize(width, height);
+      renderer.setPixelRatio(
+        Math.min(window.devicePixelRatio, renderPixelRatioCap(qualityRef.current)),
+      );
       camera.aspect = Math.max(0.1, width / Math.max(1, height));
       camera.updateProjectionMatrix();
     };
@@ -464,15 +483,37 @@ export function OrbitalHub({
     const animate = (now: number) => {
       const dt = Math.min(0.04, (now - previous) / 1000);
       previous = now;
-      const forwardInput =
+      const pad = readStandardGamepad(
+        typeof navigator.getGamepads === "function"
+          ? primaryGamepad(navigator.getGamepads())
+          : null,
+      );
+      padStatusTimer -= dt;
+      if (padStatusTimer <= 0) {
+        padStatusTimer = 0.5;
+        if (pad.connected !== lastPadConnected) {
+          lastPadConnected = pad.connected;
+          setControllerConnected(pad.connected);
+        }
+      }
+      const keyboardForward =
         (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
         (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
-      const strafeInput = (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+      const keyboardStrafe =
+        (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+      const forwardInput = keyboardForward || -pad.moveY;
+      const strafeInput = keyboardStrafe || pad.moveX;
       const fallbackTurn =
         document.pointerLockElement === renderer.domElement
           ? 0
           : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
       if (interactiveRef.current) yaw += fallbackTurn * dt * 2.1;
+      if (interactiveRef.current && pad.connected) yaw -= pad.lookX * dt * 2.8;
+
+      if (pad.interact && !padInteractLatch && interactiveRef.current && nearest) {
+        openStationRef.current(nearest.id);
+      }
+      padInteractLatch = pad.interact;
 
       const moving = interactiveRef.current && (forwardInput !== 0 || strafeInput !== 0);
       if (moving) {
@@ -615,13 +656,23 @@ export function OrbitalHub({
         ))}
       </div>
       <div className={styles.hubWalkControls}>
-        <span>{mouseCaptured ? "MOUSE LOCKED · ESC RELEASES" : "CLICK DECK TO LOCK MOUSE"}</span>
-        <small>W/S MOVE · A/D STRAFE · MOUSE LOOK · E USE</small>
+        <span>
+          {controllerConnected
+            ? "CONTROLLER ONLINE · NO MOUSE LOCK REQUIRED"
+            : mouseCaptured
+              ? "MOUSE LOCKED · ESC RELEASES"
+              : "CLICK DECK TO LOCK MOUSE"}
+        </span>
+        <small>
+          {controllerConnected
+            ? "LEFT STICK MOVE · RIGHT STICK LOOK · X / SQUARE USE"
+            : "W/S MOVE · A/D STRAFE · MOUSE LOOK · E USE"}
+        </small>
       </div>
       <div className={`${styles.hubInteract} ${nearestStation ? styles.hubInteractReady : ""}`}>
         {nearestStation ? (
           <>
-            <kbd>E</kbd>
+            <kbd>{controllerConnected ? "X" : "E"}</kbd>
             <div>
               <span>{nearestStation.code} {"//"} {nearestStation.name}</span>
               <strong>{nearestStation.action}</strong>

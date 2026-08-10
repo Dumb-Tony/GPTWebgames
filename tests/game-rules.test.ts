@@ -21,8 +21,11 @@ import {
   normalizeControlSettings,
   predictCargoThrow,
   registerRepairStrike,
+  renderPixelRatioCap,
   seededRandom,
 } from "../app/game/gameRules.ts";
+import { readStandardGamepad } from "../app/game/gamepad.ts";
+import { getMissionGuideStep } from "../app/game/onboarding.ts";
 import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
@@ -307,10 +310,84 @@ test("control preferences reject invalid values and clamp extreme tuning", () =>
   assert.deepEqual(normalizeControlSettings(null), DEFAULT_CONTROL_SETTINGS);
   assert.deepEqual(
     normalizeControlSettings({ lookSensitivity: 9, invertY: true, volume: -4 }),
-    { lookSensitivity: 2, invertY: true, volume: 0 },
+    {
+      ...DEFAULT_CONTROL_SETTINGS,
+      lookSensitivity: 2,
+      invertY: true,
+      volume: 0,
+    },
   );
   assert.deepEqual(
     normalizeControlSettings({ lookSensitivity: 0.1, volume: 4 }),
-    { lookSensitivity: 0.45, invertY: false, volume: 1 },
+    {
+      ...DEFAULT_CONTROL_SETTINGS,
+      lookSensitivity: 0.45,
+      volume: 1,
+    },
   );
+  const accessible = normalizeControlSettings({
+    cameraShake: -2,
+    highContrast: true,
+    hudScale: 9,
+    renderQuality: "not-a-preset" as "low",
+    missionGuide: false,
+  });
+  assert.equal(accessible.cameraShake, 0);
+  assert.equal(accessible.highContrast, true);
+  assert.equal(accessible.hudScale, 1.2);
+  assert.equal(accessible.renderQuality, "balanced");
+  assert.equal(accessible.missionGuide, false);
+  assert.equal(renderPixelRatioCap("low"), 1);
+  assert.equal(renderPixelRatioCap("balanced"), 1.5);
+  assert.equal(renderPixelRatioCap("high"), 2);
+});
+
+test("standard controllers apply deadzones and expose the complete field control set", () => {
+  const buttons = Array.from({ length: 16 }, () => ({ pressed: false, value: 0 }));
+  buttons[0] = { pressed: true, value: 1 };
+  buttons[2] = { pressed: true, value: 1 };
+  buttons[3] = { pressed: true, value: 1 };
+  buttons[4] = { pressed: true, value: 1 };
+  buttons[5] = { pressed: true, value: 1 };
+  buttons[7] = { pressed: false, value: 0.8 };
+  buttons[13] = { pressed: true, value: 1 };
+  const input = readStandardGamepad({
+    connected: true,
+    axes: [0.1, -0.58, 0.42, -0.2],
+    buttons,
+  });
+  assert.equal(input.connected, true);
+  assert.equal(input.moveX, 0);
+  assert.ok(input.moveY < -0.49);
+  assert.ok(input.lookX > 0.3);
+  assert.ok(input.lookY < 0);
+  assert.equal(input.jump, true);
+  assert.equal(input.interact, true);
+  assert.equal(input.scan, true);
+  assert.equal(input.drill, true);
+  assert.equal(input.tether, true);
+  assert.equal(input.throwCargo, true);
+  assert.equal(input.pingDanger, true);
+});
+
+test("first-shift guidance advances through the full extraction loop", () => {
+  const state = {
+    moved: false,
+    scanned: false,
+    drilled: false,
+    carried: false,
+    score: 0,
+    target: 900,
+  };
+  assert.equal(getMissionGuideStep(state).id, "move");
+  state.moved = true;
+  assert.equal(getMissionGuideStep(state).id, "scan");
+  state.scanned = true;
+  assert.equal(getMissionGuideStep(state).id, "drill");
+  state.drilled = true;
+  assert.equal(getMissionGuideStep(state).id, "carry");
+  state.carried = true;
+  assert.equal(getMissionGuideStep(state).id, "secure");
+  state.score = 900;
+  assert.equal(getMissionGuideStep(state).id, "return");
 });

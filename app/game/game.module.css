@@ -554,6 +554,116 @@
   letter-spacing: 0.08em;
 }
 
+.controllerControls {
+  position: absolute;
+  z-index: 5;
+  bottom: 101px;
+  left: 28px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 610px;
+  font-family: monospace;
+}
+
+.controllerControls span {
+  padding: 7px 8px;
+  border: 1px solid rgba(110, 231, 228, 0.22);
+  background: rgba(7, 10, 20, 0.82);
+  color: var(--muted);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  backdrop-filter: blur(7px);
+}
+
+.controllerControls kbd {
+  color: var(--cyan);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.keyboardControlsDimmed {
+  opacity: 0.26;
+}
+
+.missionGuide {
+  position: absolute;
+  z-index: 5;
+  top: 122px;
+  left: 50%;
+  width: min(290px, 30vw);
+  padding: 13px 14px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 216, 90, 0.32);
+  border-top: 3px solid var(--yellow);
+  background: rgba(7, 10, 20, 0.86);
+  box-shadow: 0 18px 38px rgba(0, 0, 0, 0.26);
+  font-family: monospace;
+  backdrop-filter: blur(9px);
+}
+
+.missionGuide header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--yellow);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.13em;
+}
+
+.missionGuide header strong {
+  color: var(--ink);
+  font-size: 10px;
+}
+
+.missionGuideProgress {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 3px;
+  margin: 9px 0 11px;
+}
+
+.missionGuideProgress i {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.missionGuideProgress i[data-complete="true"] {
+  background: var(--green);
+}
+
+.missionGuideProgress i[data-active="true"] {
+  background: var(--yellow);
+  box-shadow: 0 0 10px rgba(255, 216, 90, 0.52);
+}
+
+.missionGuide h3 {
+  margin: 0 0 7px;
+  color: var(--ink);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+
+.missionGuide kbd {
+  display: inline-block;
+  margin-bottom: 8px;
+  padding: 5px 7px;
+  border: 1px solid rgba(110, 231, 228, 0.38);
+  background: rgba(110, 231, 228, 0.1);
+  color: var(--cyan);
+  font-size: 8px;
+  font-weight: 900;
+  letter-spacing: 0.07em;
+}
+
+.missionGuide p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
 .radio {
   position: absolute;
   z-index: 4;
@@ -1049,6 +1159,7 @@
 .settingsIntro,
 .rangeSetting,
 .checkSetting,
+.selectSetting,
 .settingsFooter {
   font-family: monospace;
 }
@@ -1096,7 +1207,8 @@
 }
 
 .rangeSetting,
-.checkSetting {
+.checkSetting,
+.selectSetting {
   display: flex;
   border: 1px solid var(--line);
   background: rgba(255, 255, 255, 0.025);
@@ -1156,6 +1268,39 @@
   flex: 0 0 auto;
   accent-color: var(--orange);
   cursor: pointer;
+}
+
+.selectSetting {
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+}
+
+.selectSetting > span {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+}
+
+.selectSetting small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.45;
+}
+
+.selectSetting select {
+  min-width: 118px;
+  padding: 8px 9px;
+  border: 1px solid var(--line);
+  background: #161d2e;
+  color: var(--ink);
+  font-family: monospace;
+  font-size: 8px;
 }
 
 .settingsFooter {
@@ -2279,6 +2424,75 @@
   box-shadow: none;
 }
 
+.missionPanel,
+.toolPanel,
+.missionGuide,
+.controls,
+.controllerControls,
+.radio,
+.actionPrompt,
+.homeReadout,
+.mouseCapture,
+.crewRoster {
+  scale: var(--hud-scale, 1);
+}
+
+.missionPanel,
+.controls,
+.controllerControls,
+.crewRoster {
+  transform-origin: left top;
+}
+
+.toolPanel,
+.radio {
+  transform-origin: right top;
+}
+
+.actionPrompt,
+.homeReadout,
+.missionGuide,
+.mouseCapture {
+  transform-origin: center top;
+}
+
+.shell[data-high-contrast="true"] .missionPanel,
+.shell[data-high-contrast="true"] .toolPanel,
+.shell[data-high-contrast="true"] .missionGuide,
+.shell[data-high-contrast="true"] .radio,
+.shell[data-high-contrast="true"] .actionPrompt,
+.shell[data-high-contrast="true"] .controls div,
+.shell[data-high-contrast="true"] .controllerControls span {
+  border-color: rgba(255, 255, 255, 0.62);
+  background: rgba(1, 3, 8, 0.96);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8);
+}
+
+.shell[data-high-contrast="true"] .missionPanel p,
+.shell[data-high-contrast="true"] .miniStats,
+.shell[data-high-contrast="true"] .radio p,
+.shell[data-high-contrast="true"] .missionGuide p,
+.shell[data-high-contrast="true"] .controls span {
+  color: #fff;
+}
+
+.shell[data-high-contrast="true"] .heatDanger,
+.shell[data-high-contrast="true"] .integrityDanger,
+.shell[data-high-contrast="true"] .suitDanger {
+  outline: 2px solid #fff;
+  outline-offset: 1px;
+}
+
+.shell[data-quality="low"]::before {
+  display: none;
+}
+
+[data-gamepad-scope="true"] :focus-visible {
+  outline: 3px solid var(--cyan);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 5px rgba(6, 9, 20, 0.82), 0 0 22px rgba(110, 231, 228, 0.5);
+}
+
 @keyframes warningPulse {
   50% {
     background: rgba(112, 19, 32, 0.72);
@@ -2409,6 +2623,17 @@
   .actionPrompt {
     bottom: 126px;
     min-width: min(360px, 82vw);
+  }
+
+  .missionGuide {
+    top: 260px;
+    width: min(330px, 86vw);
+  }
+
+  .controllerControls {
+    bottom: 92px;
+    left: 12px;
+    max-width: 70vw;
   }
 
   .briefingCard,

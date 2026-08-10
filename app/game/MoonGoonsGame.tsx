@@ -1,12 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 import * as THREE from "three";
 import { ControlSettingsPanel } from "./ControlSettingsPanel";
 import { CrewLobby, CrewRoster } from "./CrewLobby";
 import { FieldNotes } from "./FieldNotes";
+import { GamepadMenuNavigation } from "./GamepadMenuNavigation";
+import { MissionGuide } from "./MissionGuide";
 import { OperationsHub } from "./OperationsHub";
 import { OrbitalHub, type HubStationId } from "./OrbitalHub";
+import { primaryGamepad, readStandardGamepad } from "./gamepad";
 import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
@@ -45,6 +48,7 @@ import {
   normalizeControlSettings,
   predictCargoThrow,
   registerRepairStrike,
+  renderPixelRatioCap,
   seededRandom,
   type CargoKind,
   type ControlSettings,
@@ -167,6 +171,10 @@ type Snapshot = {
   contractId: ContractId;
   contractTarget: number;
   thrusterCapacity: number;
+  tutorialMoved: boolean;
+  tutorialScanned: boolean;
+  tutorialDrilled: boolean;
+  tutorialCarried: boolean;
 };
 
 const palette = {
@@ -1106,6 +1114,10 @@ export function MoonGoonsGame() {
   const interactLatchRef = useRef(false);
   const scanLatchRef = useRef(false);
   const repairLatchRef = useRef(false);
+  const tutorialMovedRef = useRef(false);
+  const tutorialScannedRef = useRef(false);
+  const tutorialDrilledRef = useRef(false);
+  const tutorialCarriedRef = useRef(false);
   const notesOpenRef = useRef(false);
   const settingsOpenRef = useRef(false);
   const mouseCapturedRef = useRef(false);
@@ -1147,6 +1159,7 @@ export function MoonGoonsGame() {
   });
   const controlSettingsRef = useRef<ControlSettings>(controlSettings);
   const [mouseCaptured, setMouseCaptured] = useState(false);
+  const [controllerConnected, setControllerConnected] = useState(false);
   const [mouseLockIssue, setMouseLockIssue] = useState<MouseLockIssue>(null);
   const [crewSession, setCrewSession] = useState<CrewSession | null>(() => {
     if (typeof window === "undefined") return null;
@@ -1225,6 +1238,10 @@ export function MoonGoonsGame() {
     contractId: "standard_procurement",
     contractTarget: CONTRACTS.standard_procurement.target,
     thrusterCapacity: 100,
+    tutorialMoved: false,
+    tutorialScanned: false,
+    tutorialDrilled: false,
+    tutorialCarried: false,
   });
 
   useEffect(() => {
@@ -1248,6 +1265,7 @@ export function MoonGoonsGame() {
     const normalized = normalizeControlSettings(nextSettings);
     controlSettingsRef.current = normalized;
     setControlSettings(normalized);
+    window.dispatchEvent(new Event("resize"));
     try {
       window.localStorage.setItem(CONTROL_SETTINGS_KEY, JSON.stringify(normalized));
     } catch {
@@ -1542,6 +1560,20 @@ export function MoonGoonsGame() {
     setSettingsOpen(open);
   }, []);
 
+  const closeActivePanel = useCallback(() => {
+    if (notesOpenRef.current) {
+      notesOpenRef.current = false;
+      setNotesOpen(false);
+      return;
+    }
+    if (settingsOpenRef.current) {
+      settingsOpenRef.current = false;
+      setSettingsOpen(false);
+      return;
+    }
+    setHubTerminalOpen(false);
+  }, []);
+
   const requestMouseLock = useCallback(() => {
     if (
       phaseRef.current !== "active" ||
@@ -1587,7 +1619,12 @@ export function MoonGoonsGame() {
       antialias: true,
       powerPreference: "high-performance",
     });
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+    renderer.setPixelRatio(
+      Math.min(
+        window.devicePixelRatio,
+        renderPixelRatioCap(controlSettingsRef.current.renderQuality),
+      ),
+    );
     renderer.setSize(mount.clientWidth, mount.clientHeight);
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFShadowMap;
@@ -1750,6 +1787,10 @@ export function MoonGoonsGame() {
     let currentThrowPrediction: ReturnType<typeof predictCargoThrow> | null = null;
     let animationFrame = 0;
     let previous = performance.now();
+    let padTetherLatch = false;
+    let padMenuLatch = false;
+    let padPingLatch = false;
+    let lastPadConnected = false;
 
     const shatterDeposit = (deposit: DepositRuntime, impactSpeed: number) => {
       deposit.state = "broken";
@@ -1910,6 +1951,10 @@ export function MoonGoonsGame() {
       suitRecoveriesRef.current = 0;
       repairLatchRef.current = false;
       scanCooldownRef.current = 0;
+      tutorialMovedRef.current = false;
+      tutorialScannedRef.current = false;
+      tutorialDrilledRef.current = false;
+      tutorialCarriedRef.current = false;
       warningPlayed = false;
       meteorWarningPlayed = false;
       missionRandom = seededRandom(missionSeedRef.current + 704);
@@ -1947,7 +1992,12 @@ export function MoonGoonsGame() {
       camera.aspect = width / height;
       camera.updateProjectionMatrix();
       renderer.setSize(width, height);
-      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.75));
+      renderer.setPixelRatio(
+        Math.min(
+          window.devicePixelRatio,
+          renderPixelRatioCap(controlSettingsRef.current.renderQuality),
+        ),
+      );
     };
     onResize();
     window.addEventListener("resize", onResize);
@@ -2350,6 +2400,15 @@ export function MoonGoonsGame() {
       previous = now;
       hudTimer += dt;
       const keys = keysRef.current;
+      const pad = readStandardGamepad(
+        typeof navigator.getGamepads === "function"
+          ? primaryGamepad(navigator.getGamepads())
+          : null,
+      );
+      if (pad.connected !== lastPadConnected) {
+        lastPadConnected = pad.connected;
+        setControllerConnected(pad.connected);
+      }
       if (
         networkMissionStartRef.current !== null &&
         phaseRef.current === "briefing"
@@ -2377,6 +2436,72 @@ export function MoonGoonsGame() {
         processedAuthorityRevisionRef.current = incomingAuthority.revision;
       }
       const phase = phaseRef.current;
+      const gameplayInputEnabled =
+        phase === "active" &&
+        !notesOpenRef.current &&
+        !settingsOpenRef.current;
+      if (gameplayInputEnabled && pad.connected) {
+        const { lookSensitivity, invertY } = controlSettingsRef.current;
+        astronaut.rotation.y -= pad.lookX * dt * 2.75 * lookSensitivity;
+        cameraPitch = THREE.MathUtils.clamp(
+          cameraPitch + pad.lookY * dt * 2.1 * lookSensitivity * (invertY ? 1 : -1),
+          -0.28,
+          0.34,
+        );
+      }
+      if (pad.menu && !padMenuLatch && phase === "active") {
+        settingsOpenRef.current = true;
+        notesOpenRef.current = false;
+        setNotesOpen(false);
+        setSettingsOpen(true);
+        keys.clear();
+        if (document.pointerLockElement) document.exitPointerLock();
+      }
+      padMenuLatch = pad.menu;
+
+      if (pad.tether && !padTetherLatch && gameplayInputEnabled) {
+        const activeSession = crewSessionRef.current;
+        if (activeSession?.role === "guest") {
+          queueCrewAction("tether");
+          messageRef.current = "Tether request sent to mission lead authority.";
+        } else {
+          toggleTether(
+            activeSession?.memberId ?? "solo",
+            activeSession?.name ?? "SOLO GOON",
+            astronaut.position,
+          );
+        }
+      }
+      padTetherLatch = pad.tether;
+
+      const padPingType: CrewActionType | null = pad.pingHelp
+        ? "ping_help"
+        : pad.pingCargo
+          ? "ping_cargo"
+          : pad.pingDanger
+            ? "ping_danger"
+            : pad.pingShip
+              ? "ping_ship"
+              : null;
+      if (
+        padPingType &&
+        !padPingLatch &&
+        gameplayInputEnabled &&
+        crewSessionRef.current
+      ) {
+        const pingLabels: Record<string, string> = {
+          ping_help: "NEEDS HELP",
+          ping_cargo: "MARKED CARGO",
+          ping_danger: "MARKED DANGER",
+          ping_ship: "CALLED RETURN TO SHIP",
+        };
+        if (crewSessionRef.current.role === "guest") queueCrewAction(padPingType);
+        else {
+          messageRef.current = `${crewSessionRef.current.name} ${pingLabels[padPingType]}.`;
+        }
+        sound(padPingType === "ping_danger" ? "warning" : "scan");
+      }
+      padPingLatch = padPingType !== null;
       updateRemoteCrew(dt, now);
       if (hasAuthority && phase === "active") processCrewActions();
 
@@ -2443,11 +2568,18 @@ export function MoonGoonsGame() {
         timeRef.current = Math.max(0, timeRef.current - dt);
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
         damageCooldown = Math.max(0, damageCooldown - dt);
+        const jumpPressed = keys.has("Space") || pad.jump;
+        const scanInput = keys.has("KeyQ") || pad.scan;
+        const drillInput = keys.has("KeyF") || pad.drill;
+        const repairInput = keys.has("KeyR") || pad.repair;
+        const interactInput = keys.has("KeyE") || pad.interact || pad.throwCargo;
+        const throwInput =
+          keys.has("ShiftLeft") || keys.has("ShiftRight") || pad.throwCargo;
 
         if (downedRef.current) {
           recoveryProgressRef.current = advanceSuitRecovery(
             recoveryProgressRef.current,
-            keys.has("KeyE"),
+            interactInput,
             dt,
           );
           if (recoveryProgressRef.current >= 100) {
@@ -2655,17 +2787,18 @@ export function MoonGoonsGame() {
           carried && hasEquippedUpgrade(progressionRef.current, "cargo_harness")
             ? 1 - (1 - cargoSpeed) * 0.55
             : cargoSpeed;
-        const driveInput = incapacitated
-          ? 0
-          : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-            (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
-        const strafeInput = incapacitated
-          ? 0
-          : (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+        const keyboardDrive =
+          (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
+          (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+        const keyboardStrafe =
+          (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+        const driveInput = incapacitated ? 0 : keyboardDrive || -pad.moveY;
+        const strafeInput = incapacitated ? 0 : keyboardStrafe || pad.moveX;
         const fallbackTurnInput = mouseCapturedRef.current || incapacitated
           ? 0
           : (keys.has("ArrowLeft") ? 1 : 0) - (keys.has("ArrowRight") ? 1 : 0);
         const moving = driveInput !== 0 || strafeInput !== 0;
+        if (moving) tutorialMovedRef.current = true;
 
         if (fallbackTurnInput !== 0) {
           astronaut.rotation.y += fallbackTurnInput * 2.35 * dt;
@@ -2705,7 +2838,7 @@ export function MoonGoonsGame() {
           velocity.z = THREE.MathUtils.damp(velocity.z, 0, momentumDrag, dt);
         }
 
-        if (!incapacitated && keys.has("Space") && playerHeight <= 0.01) {
+        if (!incapacitated && jumpPressed && playerHeight <= 0.01) {
           verticalVelocity =
             carried?.kind === "platinum" ? JUMP_VELOCITY * 0.72 : JUMP_VELOCITY;
           playerHeight = 0.02;
@@ -2713,7 +2846,7 @@ export function MoonGoonsGame() {
         }
         const thrusterActive =
           !incapacitated &&
-          keys.has("Space") &&
+          jumpPressed &&
           playerHeight > 0.38 &&
           thrusterFuel > 0;
         if (thrusterActive) {
@@ -2811,8 +2944,9 @@ export function MoonGoonsGame() {
           }
         }
 
-        const scanPressed = !incapacitated && keys.has("KeyQ");
+        const scanPressed = !incapacitated && scanInput;
         if (scanPressed && !scanLatchRef.current && scanCooldownRef.current <= 0) {
+          tutorialScannedRef.current = true;
           const upgradedScanner = hasEquippedUpgrade(
             progressionRef.current,
             "survey_array",
@@ -3139,7 +3273,7 @@ export function MoonGoonsGame() {
           )[0];
         const drilling =
           !incapacitated &&
-          keys.has("KeyF") &&
+          drillInput &&
           nearestDrillable &&
           nearestDrillable.position.distanceTo(astronaut.position) < 3 &&
           carryingRef.current === null &&
@@ -3150,7 +3284,7 @@ export function MoonGoonsGame() {
         const drill = astronaut.userData.drill as THREE.Group;
         const drillLight = astronaut.userData.drillLight as THREE.Mesh;
         const drillLightMaterial = drillLight.material as THREE.MeshStandardMaterial;
-        const repairPressed = !incapacitated && keys.has("KeyR");
+        const repairPressed = !incapacitated && repairInput;
         if (
           repairPressed &&
           !repairLatchRef.current &&
@@ -3199,6 +3333,7 @@ export function MoonGoonsGame() {
           : 2.6;
 
         if (drilling && nearestDrillable) {
+          tutorialDrilledRef.current = true;
           if (hasAuthority) {
             nearestDrillable.state = "extracting";
             nearestDrillable.progress += dt * (heatRef.current > 72 ? 15 : 23);
@@ -3273,11 +3408,11 @@ export function MoonGoonsGame() {
           }
         }
 
-        const interactPressed = !incapacitated && keys.has("KeyE");
+        const interactPressed = !incapacitated && interactInput;
         if (interactPressed && !interactLatchRef.current) {
           if (!hasAuthority) {
             queueCrewAction(
-              keys.has("ShiftLeft") || keys.has("ShiftRight") ? "throw" : "interact",
+              throwInput ? "throw" : "interact",
             );
             messageRef.current = "Cargo request sent to mission lead authority.";
           } else if (carryingRef.current !== null) {
@@ -3295,7 +3430,7 @@ export function MoonGoonsGame() {
                 messageRef.current = `${cargoData[held.kind].name} secured for ¢${earned}. S.P.A.C.E. owns it now.`;
                 sound("secure");
               } else {
-                const throwing = keys.has("ShiftLeft") || keys.has("ShiftRight");
+                const throwing = throwInput;
                 const roughDrop = !throwing && (playerHeight > 0.3 || velocity.length() > 4);
                 if (roughDrop) {
                   const roughImpactSpeed =
@@ -3359,6 +3494,7 @@ export function MoonGoonsGame() {
               nearbyCargo.position.distanceTo(astronaut.position) < 3.2
             ) {
               carryingRef.current = nearbyCargo.id;
+              tutorialCarriedRef.current = true;
               nearbyCargo.ownerId = session?.memberId ?? "solo";
               nearbyCargo.tetherOwnerIds = [];
               nearbyCargo.velocity.set(0, 0, 0);
@@ -3407,7 +3543,11 @@ export function MoonGoonsGame() {
       }
 
       let networkInputMask = 0;
-      if (keys.has("KeyF") && !overheatedRef.current && !drillJammedRef.current) {
+      if (
+        (keys.has("KeyF") || pad.drill) &&
+        !overheatedRef.current &&
+        !drillJammedRef.current
+      ) {
         networkInputMask |= CREW_INPUT_DRILL;
       }
       if (
@@ -3416,11 +3556,13 @@ export function MoonGoonsGame() {
         keys.has("KeyA") ||
         keys.has("KeyD") ||
         keys.has("ArrowUp") ||
-        keys.has("ArrowDown")
+        keys.has("ArrowDown") ||
+        Math.abs(pad.moveX) > 0.08 ||
+        Math.abs(pad.moveY) > 0.08
       ) {
         networkInputMask |= CREW_INPUT_MOVING;
       }
-      if (keys.has("Space") && playerHeight > 0.38 && thrusterFuel > 0) {
+      if ((keys.has("Space") || pad.jump) && playerHeight > 0.38 && thrusterFuel > 0) {
         networkInputMask |= CREW_INPUT_THRUSTER;
       }
       if (downedRef.current) networkInputMask |= CREW_INPUT_DOWNED;
@@ -3560,8 +3702,10 @@ export function MoonGoonsGame() {
         .addScaledVector(forward, -10.5)
         .add(new THREE.Vector3(0, 8.3 + playerHeight * 0.2, 0));
       if (cameraImpact > 0.01) {
-        desiredCamera.x += Math.sin(now * 0.065) * cameraImpact * 0.22;
-        desiredCamera.y += Math.cos(now * 0.052) * cameraImpact * 0.15;
+        const shakeStrength =
+          cameraImpact * controlSettingsRef.current.cameraShake;
+        desiredCamera.x += Math.sin(now * 0.065) * shakeStrength * 0.22;
+        desiredCamera.y += Math.cos(now * 0.052) * shakeStrength * 0.15;
         cameraImpact = Math.max(0, cameraImpact - dt * 3.8);
       }
       camera.position.lerp(desiredCamera, 1 - Math.exp(-dt * 4.5));
@@ -3581,6 +3725,7 @@ export function MoonGoonsGame() {
       if (hudTimer >= 0.09) {
         hudTimer = 0;
         const held = deposits.find((deposit) => deposit.id === carryingRef.current);
+        if (held) tutorialCarriedRef.current = true;
         const hudOwnerId = session?.memberId ?? "solo";
         const tethered = deposits.find((deposit) =>
           deposit.tetherOwnerIds.includes(hudOwnerId),
@@ -3821,6 +3966,10 @@ export function MoonGoonsGame() {
           contractId: activeContractIdRef.current,
           contractTarget: CONTRACTS[activeContractIdRef.current].target,
           thrusterCapacity,
+          tutorialMoved: tutorialMovedRef.current,
+          tutorialScanned: tutorialScannedRef.current,
+          tutorialDrilled: tutorialDrilledRef.current,
+          tutorialCarried: tutorialCarriedRef.current,
         });
       }
 
@@ -3967,6 +4116,10 @@ export function MoonGoonsGame() {
       contractId: selectedContractId,
       contractTarget: contract.target,
       thrusterCapacity,
+      tutorialMoved: false,
+      tutorialScanned: false,
+      tutorialDrilled: false,
+      tutorialCarried: false,
     });
     requestMouseLock();
     sound("launch");
@@ -3976,7 +4129,13 @@ export function MoonGoonsGame() {
   const urgent = snapshot.phase === "active" && snapshot.time <= 30;
 
   return (
-    <main className={styles.shell} data-phase={snapshot.phase}>
+    <main
+      className={styles.shell}
+      data-phase={snapshot.phase}
+      data-high-contrast={controlSettings.highContrast || undefined}
+      data-quality={controlSettings.renderQuality}
+      style={{ "--hud-scale": controlSettings.hudScale } as CSSProperties}
+    >
       <div
         ref={mountRef}
         className={`${styles.canvas} ${mouseCaptured ? styles.mouseLocked : ""}`}
@@ -3989,6 +4148,7 @@ export function MoonGoonsGame() {
           credits={progression.credits}
           research={progression.research}
           lastRepairBill={lastSettlement?.repairCreditsCharged ?? 0}
+          renderQuality={controlSettings.renderQuality}
           interactive={!hubTerminalOpen && !notesOpen && !settingsOpen}
           onOpenStation={openHubStation}
         />
@@ -3999,7 +4159,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 021 // WALKABLE HUB</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 022 // VERTICAL SLICE POLISH</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -4015,6 +4175,10 @@ export function MoonGoonsGame() {
         onOpenChange={handleSettingsOpenChange}
         onSettingsChange={updateControlSettings}
       />
+      <GamepadMenuNavigation
+        active={hubTerminalOpen || notesOpen || settingsOpen}
+        onBack={closeActivePanel}
+      />
 
       {snapshot.phase === "active" && (
         <>
@@ -4026,13 +4190,28 @@ export function MoonGoonsGame() {
               onLeave={leaveCrew}
             />
           )}
+          {controlSettings.missionGuide && (
+            <MissionGuide
+              controllerConnected={controllerConnected}
+              state={{
+                moved: snapshot.tutorialMoved,
+                scanned: snapshot.tutorialScanned,
+                drilled: snapshot.tutorialDrilled,
+                carried: snapshot.tutorialCarried,
+                score: snapshot.score,
+                target: snapshot.contractTarget,
+              }}
+            />
+          )}
           <div
             className={`${styles.mouseCapture} ${
               mouseCaptured ? styles.mouseCaptureActive : ""
             }`}
           >
             <span>
-              {mouseCaptured
+              {controllerConnected
+                ? "CONTROLLER ONLINE"
+                : mouseCaptured
                 ? "MOUSE LOCKED TO CENTER"
                 : mouseLockIssue === "unsupported"
                   ? "MOUSE LOCK UNAVAILABLE IN THIS PREVIEW"
@@ -4041,7 +4220,9 @@ export function MoonGoonsGame() {
                     : "CLICK VIEW TO LOCK MOUSE"}
             </span>
             <small>
-              {mouseCaptured
+              {controllerConnected
+                ? "LEFT STICK MOVE · RIGHT STICK LOOK · START SETTINGS"
+                : mouseCaptured
                 ? "ESC TO RELEASE"
                 : mouseLockIssue === "unsupported" || mouseLockIssue === "blocked"
                   ? "OPEN THE PUBLIC LINK IN CHROME OR EDGE OUTSIDE CODEX"
@@ -4228,7 +4409,22 @@ export function MoonGoonsGame() {
             </div>
           </aside>
 
-          <div className={styles.controls} aria-label="Game controls">
+          {controllerConnected && (
+            <div className={styles.controllerControls} aria-label="Controller controls">
+              <span><kbd>A</kbd> HOP / BOOST</span>
+              <span><kbd>X</kbd> USE / CARGO</span>
+              <span><kbd>Y</kbd> SCAN</span>
+              <span><kbd>RT</kbd> DRILL</span>
+              <span><kbd>LB</kbd> TETHER</span>
+              <span><kbd>RB</kbd> THROW</span>
+              <span><kbd>B</kbd> REPAIR</span>
+            </div>
+          )}
+
+          <div
+            className={`${styles.controls} ${controllerConnected ? styles.keyboardControlsDimmed : ""}`}
+            aria-label="Keyboard controls"
+          >
             <div>
               <kbd>W / S</kbd>
               <span>FORWARD / REVERSE</span>
@@ -4302,7 +4498,10 @@ export function MoonGoonsGame() {
       )}
 
       {snapshot.phase === "briefing" && hubTerminalOpen && (
-        <section className={`${styles.overlay} ${styles.hubTerminalOverlay}`}>
+        <section
+          className={`${styles.overlay} ${styles.hubTerminalOverlay}`}
+          data-gamepad-scope="true"
+        >
           <div className={`${styles.briefingCard} ${styles.hubTerminalCard}`}>
             <button
               type="button"

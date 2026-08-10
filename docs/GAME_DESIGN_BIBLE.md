@@ -2290,6 +2290,26 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - All gameplay inputs are remappable.
 - Target hardware holds the established performance budget.
 
+**Prototype status — Build 022**
+
+- Added a contextual six-step First Shift Guide covering movement, scanning, drilling,
+  cargo pickup, delivery, quota completion, and final extraction. The guide advances from
+  real simulation actions and automatically shows controller-specific prompts when a
+  standard gamepad is connected.
+- Added standard controller input across the walkable ship hub and Practice Moon mission:
+  dual-stick movement/look, jump and EVA boost, scan, drill, interact, throw, repair,
+  tether, Crew Link callouts, and settings access. Controller menu navigation supplies a
+  visible focus treatment and supports sliders, selectors, checkboxes, and back actions.
+- Expanded Control Tuning with camera-impact strength, HUD scale, high-contrast instruments,
+  First Shift Guide visibility, and Battery Saver/Balanced/High Detail rendering presets.
+  Settings remain device-local and migrate safely when older preference objects are loaded.
+- Added explicit pixel-density caps to both 3D renderers so lower-quality presets reduce
+  GPU fill cost rather than merely hiding visual decoration. Initial browser and controller
+  targets are documented in the compatibility matrix.
+- Milestone 9 remains in progress. Complete action rebinding, screen-reader and non-color
+  cue audits, representative music/environmental audio, and measured compatibility results
+  are required before the milestone exits.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

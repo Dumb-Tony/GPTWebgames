@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 021: a physical orbital hub with a walkable 3D operations deck, interactive contract/equipment/crew/maintenance stations, replayable contract profiles, persistent personal progression, recovery-safe repair invoices, destination dossiers, and equipment modules with real field effects.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 022: the first Vertical Slice Polish pass, adding contextual first-shift guidance, end-to-end standard controller support, controller-driven menus, accessibility tuning, performance presets, and the walkable orbital operations hub introduced in Build 021.
 
 ## Playable build
 
@@ -54,6 +54,11 @@ The first prototype includes:
 - Clear in-world labels separating personal device progress from shared crew mission state
 - Automatic tool and suit repair invoices deducted only from mission earnings
 - A guaranteed minimum net payout so repairs can never consume savings or block another run
+- A contextual six-step first-shift guide that follows the complete extraction loop
+- Standard Xbox, PlayStation, and compatible controller input in both the hub and mission
+- Controller-focused menu navigation for contracts, upgrades, Crew Link, and settings
+- Camera-impact reduction, scalable HUD, high-contrast instruments, and tutorial controls
+- Battery Saver, Balanced, and High Detail render-quality presets
 
 ## Shared playtesting
 
@@ -81,6 +86,25 @@ using the public build can review and add to the same development log.
 | T | Tether or release nearby loose cargo |
 | 1 / 2 / 3 / 4 | Call for help / mark cargo / mark danger / call return to ship |
 
+### Standard controller
+
+| Input | Action |
+|---|---|
+| Left stick | Move / strafe |
+| Right stick | Look / turn |
+| A / Cross | Hop and hold for EVA boost |
+| X / Square | Interact, pick up, deposit, or reboot suit |
+| Y / Triangle | Scanner pulse |
+| Right trigger | Drill |
+| Left bumper | Tether / release |
+| Right bumper | Throw carried cargo |
+| B / Circle | Repair jammed drill / back out of menus |
+| D-pad | Crew help, cargo, danger, and ship callouts |
+| Menu / Start | Open Control Tuning |
+
+Menus show a cyan focus outline. Use the D-pad or left stick to move, A/Cross to
+activate, and B/Circle to go back.
+
 Open **CONTROL TUNING** to adjust mouse sensitivity, invert vertical look, or change effects volume. These preferences are saved on the current device.
 
 ## Development
@@ -104,9 +128,10 @@ pnpm run build
 
 ## Current milestone
 
-Build 021 completes the playable Hub and Progression foundation. Players now physically walk around the orbital support vessel between missions and approach lit stations to open the contract, equipment, Crew Link, and maintenance terminal. Version 2 career saves migrate the previous schema, while repair charges are capped against mission earnings and never touch banked credits. The hub explicitly labels personal device progress versus crew-shared run state. Practice Moon remains the launchable vertical-slice destination; Rust Belt and Icebox become playable during the later Content Pipeline milestone.
+Build 022 begins Milestone 9: Vertical Slice Polish. New players receive one contextual objective at a time from movement through scanning, drilling, cargo handling, quota completion, and extraction. Standard controllers now operate the physical hub, moon mission, menus, and crew callouts. Control Tuning adds camera-impact reduction, HUD scaling, high-contrast instruments, mission-guide visibility, and three render-quality presets. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 
 - [Game Design Bible](docs/GAME_DESIGN_BIBLE.md)
 - [Visual Direction](docs/VISUAL_DIRECTION.md)
+- [Compatibility and Performance Targets](docs/COMPATIBILITY.md)
