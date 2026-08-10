@@ -2234,6 +2234,25 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Save migration test covers the previous schema.
 - All persistent references use stable IDs.
 
+**Prototype status — Build 020**
+
+- Added an orbital operations console with three contract profiles that vary quota,
+  launch window, base pay, and research yield. In crews, the mission lead owns the
+  authoritative contract while every player retains a personal career record.
+- Added versioned device-local progression with safe normalization and migration from
+  legacy money, science, mission, owned-upgrade, and equipped-upgrade fields.
+- Successful missions award contract pay, salvage value, remaining-time bonuses, and
+  research. Failed missions always pay at least 25 recovery credits, preserving the
+  minimum free drill, scanner, tether, and EVA loadout.
+- Added four stable-ID equipment modules and a two-slot loadout. Scanner range/recharge,
+  drill heat/cooling, EVA fuel, and cargo movement are modified in the live simulation.
+- Added Practice Moon, Rust Belt, and Icebox Comet destination dossiers. Research can
+  reveal later dossiers, but Practice Moon is intentionally the only launchable map in
+  this slice.
+- Milestone 8 is not complete: the console must become a walkable ship interior, repair
+  expenses need a recovery-safe economy pass, and surveyed destinations must connect to
+  playable missions as their content ships.
+
 ## Milestone 9: Vertical Slice Polish
 
 **Deliverables**

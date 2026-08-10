@@ -73,6 +73,7 @@ export type CrewDepositState = {
 
 export type CrewMissionState = {
   missionSeed: number;
+  contractId: ContractId;
   phase: Exclude<CrewRoomPhase, "lobby" | "closed">;
   time: number;
   score: number;
@@ -155,3 +156,4 @@ export function isCrewMemberFresh(lastSeenAt: string, now = Date.now()) {
 export function crewColor(index: number) {
   return CREW_COLORS[Math.abs(Math.trunc(index)) % CREW_COLORS.length];
 }
+import type { ContractId } from "./progression";

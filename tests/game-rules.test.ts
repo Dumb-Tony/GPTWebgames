@@ -34,6 +34,58 @@ import {
   normalizeCrewName,
   normalizeRoomCode,
 } from "../app/game/crewNetwork.ts";
+import {
+  DEFAULT_PROGRESSION,
+  calculateMissionSettlement,
+  normalizeProgressionSave,
+  purchaseUpgrade,
+  toggleEquippedUpgrade,
+} from "../app/game/progression.ts";
+
+test("career saves migrate old fields and discard unknown equipment", () => {
+  const migrated = normalizeProgressionSave({
+    version: 0,
+    money: 730.9,
+    science: 9,
+    missionsCompleted: 3,
+    missionsFailed: 2,
+    upgrades: ["survey_array", "definitely_illegal", "survey_array"],
+    equipped: ["survey_array", "cargo_harness"],
+  });
+  assert.equal(migrated.version, 1);
+  assert.equal(migrated.credits, 730);
+  assert.equal(migrated.research, 9);
+  assert.deepEqual(migrated.ownedUpgradeIds, ["survey_array"]);
+  assert.deepEqual(migrated.equippedUpgradeIds, ["survey_array"]);
+});
+
+test("failed missions still pay recovery wages and cannot brick the free loadout", () => {
+  const settlement = calculateMissionSettlement({
+    progression: DEFAULT_PROGRESSION,
+    contractId: "standard_procurement",
+    success: false,
+    score: 0,
+    timeRemaining: 0,
+    samplesSecured: 0,
+  });
+  assert.equal(settlement.creditsEarned, 25);
+  assert.equal(settlement.researchEarned, 0);
+  assert.equal(settlement.progression.failedMissions, 1);
+  assert.equal(settlement.progression.credits, 25);
+});
+
+test("upgrades use stable ids, enforce costs, and cap equipped modules", () => {
+  const funded = normalizeProgressionSave({ credits: 2000, research: 20 });
+  const survey = purchaseUpgrade(funded, "survey_array");
+  const cooled = purchaseUpgrade(survey, "cooling_jacket");
+  const reserve = purchaseUpgrade(cooled, "thruster_reserve");
+  assert.deepEqual(cooled.equippedUpgradeIds, ["survey_array", "cooling_jacket"]);
+  assert.equal(reserve.ownedUpgradeIds.includes("thruster_reserve"), true);
+  assert.deepEqual(reserve.equippedUpgradeIds, ["survey_array", "cooling_jacket"]);
+  const openedSlot = toggleEquippedUpgrade(reserve, "survey_array");
+  const equippedReserve = toggleEquippedUpgrade(openedSlot, "thruster_reserve");
+  assert.deepEqual(equippedReserve.equippedUpgradeIds, ["cooling_jacket", "thruster_reserve"]);
+});
 
 test("crew names and room codes are safe, compact, and easy to share", () => {
   assert.equal(normalizeCrewName("  Doctor   Bounce  "), "Doctor Bounce");

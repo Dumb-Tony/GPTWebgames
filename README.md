@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 019: the first Cooperation Systems slice, adding a bounded physics tether, synchronized two-player hauling, quick voice-free callouts, teammate activity telemetry, and shareable crew invite links to the host-authoritative multiplayer foundation.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 020: the first Hub and Progression slice, adding an orbital operations console, replayable contract profiles, persistent personal credits and research, destination dossiers, and equipment modules with real field effects.
 
 ## Playable build
 
@@ -43,6 +43,12 @@ The first prototype includes:
 - Live drilling, movement, boosting, and safe-mode status for every connected teammate
 - One-click crew invite links that prefill the room code for a friend
 - Adjustable 150/300 ms latency and 10/20% packet-loss simulation for network testing
+- Three contract profiles with distinct quotas, clocks, and career payouts
+- Versioned device-local progression with credits, research, and safe legacy migration
+- Four purchasable field modules for scanning, drill cooling, thrusters, and cargo handling
+- Two-slot mission loadouts plus an always-free company minimum loadout
+- Destination dossiers that reveal future expeditions as research accumulates
+- Recovery wages after failed missions so progression can never block another launch
 
 ## Shared playtesting
 
@@ -93,7 +99,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 019 begins Milestone 7: Cooperation Systems while retaining the Build 018 Crew Link transport. The tether is host-authoritative, limited to two owners per cargo object, capped in pull speed, and severed cleanly beyond 19m. A second tether activates team lift and removes much of the Platinum Core hauling penalty. The quick-callout and teammate-status layer provides a voice-free cooperation baseline. The next Milestone 7 passes should add teammate suit repair/rescue, a proper radial ping wheel, and safe physical tool exchange. The short-interval HTTP transport still needs a future WebSocket or WebRTC adapter, host migration decision, and four-player soak tests before Multiplayer Core exits.
+Build 020 begins Milestone 8: Hub and Progression. The orbital operations console separates shared crew mission state from personal device-local career progress, offers three host-selected contract profiles, and supports two equipped modules from a stable-ID equipment library. Successful missions award contract pay, salvage bonuses, time bonuses, and research; failed missions still award recovery wages. The Practice Moon remains the only launchable destination while Rust Belt and Icebox dossiers expose future research thresholds. A later Milestone 8 pass should turn the operations console into a walkable ship interior, add repair expenses and shared-versus-personal progression policy for visiting players, and connect surveyed destinations as their maps arrive.
 
 ## Design references
 

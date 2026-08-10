@@ -348,7 +348,13 @@ export async function PATCH(request: Request) {
     let nextRoom = room;
     if (member.id === room.hostMemberId) {
       const roomUpdate: Partial<typeof crewRooms.$inferInsert> = { updatedAt: now };
-      if (payload.phase && roomPhases.has(payload.phase)) roomUpdate.phase = payload.phase;
+      if (payload.phase && roomPhases.has(payload.phase)) {
+        roomUpdate.phase = payload.phase;
+        if (payload.phase === "lobby" && room.phase !== "lobby") {
+          roomUpdate.authoritativeState = null;
+          roomUpdate.revision = room.revision + 1;
+        }
+      }
       if (payload.authoritativeState) {
         const serialized = JSON.stringify(payload.authoritativeState);
         if (serialized.length > 48_000) {

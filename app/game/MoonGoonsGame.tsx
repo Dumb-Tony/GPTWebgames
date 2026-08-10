@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { ControlSettingsPanel } from "./ControlSettingsPanel";
 import { CrewLobby, CrewRoster } from "./CrewLobby";
 import { FieldNotes } from "./FieldNotes";
+import { OperationsHub } from "./OperationsHub";
 import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
@@ -21,7 +22,6 @@ import {
   type CrewSession,
 } from "./crewNetwork";
 import {
-  CONTRACT_TARGET,
   DEFAULT_CONTROL_SETTINGS,
   DRILL_JAM_WEAR,
   MISSION_SECONDS,
@@ -49,6 +49,18 @@ import {
   type ControlSettings,
   type DepositDefinition,
 } from "./gameRules";
+import {
+  CONTRACTS,
+  DEFAULT_PROGRESSION,
+  calculateMissionSettlement,
+  hasEquippedUpgrade,
+  normalizeProgressionSave,
+  purchaseUpgrade,
+  toggleEquippedUpgrade,
+  type ContractId,
+  type ProgressionSave,
+  type UpgradeId,
+} from "./progression";
 import styles from "./game.module.css";
 
 const MOON_RADIUS = 48;
@@ -63,6 +75,7 @@ const CARGO_RECEIVER_POSITION = new THREE.Vector3(4.8, 0, 1.3)
   .add(SHIP_POSITION);
 const CONTROL_SETTINGS_KEY = "moon-goons-control-settings-v1";
 const CREW_SESSION_KEY = "moon-goons-crew-session-v1";
+const PROGRESSION_KEY = "moon-goons-progression-v1";
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
@@ -144,6 +157,9 @@ type Snapshot = {
   tetheredCargo: string | null;
   tetherDistance: number | null;
   tetherTeamLift: boolean;
+  contractId: ContractId;
+  contractTarget: number;
+  thrusterCapacity: number;
 };
 
 const palette = {
@@ -1057,6 +1073,9 @@ export function MoonGoonsGame() {
   const keysRef = useRef(new Set<string>());
   const phaseRef = useRef<Phase>("briefing");
   const missionSeedRef = useRef(INITIAL_MISSION_SEED);
+  const activeContractIdRef = useRef<ContractId>("standard_procurement");
+  const missionRunIdRef = useRef(0);
+  const settledRunIdRef = useRef(-1);
   const timeRef = useRef(MISSION_SECONDS);
   const scoreRef = useRef(0);
   const heatRef = useRef(0);
@@ -1138,6 +1157,23 @@ export function MoonGoonsGame() {
   const [crewNetworkTuning, setCrewNetworkTuning] = useState<CrewNetworkTuning>(
     DEFAULT_CREW_NETWORK_TUNING,
   );
+  const [progression, setProgression] = useState<ProgressionSave>(() => {
+    if (typeof window === "undefined") return DEFAULT_PROGRESSION;
+    try {
+      const stored = window.localStorage.getItem(PROGRESSION_KEY);
+      return normalizeProgressionSave(stored ? JSON.parse(stored) : null);
+    } catch {
+      return DEFAULT_PROGRESSION;
+    }
+  });
+  const progressionRef = useRef<ProgressionSave>(progression);
+  const [selectedContractId, setSelectedContractId] = useState<ContractId>(
+    "standard_procurement",
+  );
+  const [lastSettlement, setLastSettlement] = useState<{
+    creditsEarned: number;
+    researchEarned: number;
+  } | null>(null);
   const [snapshot, setSnapshot] = useState<Snapshot>({
     phase: "briefing",
     time: MISSION_SECONDS,
@@ -1175,7 +1211,27 @@ export function MoonGoonsGame() {
     tetheredCargo: null,
     tetherDistance: null,
     tetherTeamLift: false,
+    contractId: "standard_procurement",
+    contractTarget: CONTRACTS.standard_procurement.target,
+    thrusterCapacity: 100,
   });
+
+  useEffect(() => {
+    progressionRef.current = progression;
+    try {
+      window.localStorage.setItem(PROGRESSION_KEY, JSON.stringify(progression));
+    } catch {
+      // Career progress remains available for this session when storage is unavailable.
+    }
+  }, [progression]);
+
+  const buyUpgrade = useCallback((upgradeId: UpgradeId) => {
+    setProgression((current) => purchaseUpgrade(current, upgradeId));
+  }, []);
+
+  const toggleUpgrade = useCallback((upgradeId: UpgradeId) => {
+    setProgression((current) => toggleEquippedUpgrade(current, upgradeId));
+  }, []);
 
   const updateControlSettings = useCallback((nextSettings: ControlSettings) => {
     const normalized = normalizeControlSettings(nextSettings);
@@ -1313,7 +1369,12 @@ export function MoonGoonsGame() {
             presence: localPresenceRef.current,
             action,
             authoritativeState: hostState ?? undefined,
-            phase: crewSession.role === "host" ? phaseRef.current : undefined,
+            phase:
+              crewSession.role === "host"
+                ? phaseRef.current === "briefing"
+                  ? "lobby"
+                  : phaseRef.current
+                : undefined,
             ackActionId:
               crewSession.role === "host" ? processedCrewActionRef.current : undefined,
           }),
@@ -1356,6 +1417,15 @@ export function MoonGoonsGame() {
         }
         if (room.phase === "active" && phaseRef.current !== "active") {
           networkMissionStartRef.current = room.missionSeed;
+        }
+        if (
+          room.phase === "lobby" &&
+          crewSession.role === "guest" &&
+          phaseRef.current !== "briefing"
+        ) {
+          phaseRef.current = "briefing";
+          authoritativeStateRef.current = null;
+          setSnapshot((current) => ({ ...current, phase: "briefing" }));
         }
       } catch (error) {
         if (!cancelled) {
@@ -1653,6 +1723,7 @@ export function MoonGoonsGame() {
     let verticalVelocity = 0;
     let playerHeight = 0;
     let thrusterFuel = 100;
+    let thrusterCapacity = 100;
     let scanAnimation = 0;
     let hudTimer = 0;
     let warningPlayed = false;
@@ -1801,9 +1872,15 @@ export function MoonGoonsGame() {
       velocity.set(0, 0, 0);
       verticalVelocity = 0;
       playerHeight = 0;
-      thrusterFuel = 100;
+      thrusterCapacity = hasEquippedUpgrade(
+        progressionRef.current,
+        "thruster_reserve",
+      )
+        ? 125
+        : 100;
+      thrusterFuel = thrusterCapacity;
       carryingRef.current = null;
-      timeRef.current = MISSION_SECONDS;
+      timeRef.current = CONTRACTS[activeContractIdRef.current].seconds;
       scoreRef.current = 0;
       heatRef.current = 0;
       overheatedRef.current = false;
@@ -2025,6 +2102,8 @@ export function MoonGoonsGame() {
     const applyAuthoritativeState = (state: CrewMissionState) => {
       if (state.missionSeed !== missionSeedRef.current) return;
       timeRef.current = state.time;
+      activeContractIdRef.current = state.contractId ?? "standard_procurement";
+      setSelectedContractId(state.contractId ?? "standard_procurement");
       scoreRef.current = state.score;
       messageRef.current = state.message;
       phaseRef.current = state.phase;
@@ -2266,6 +2345,8 @@ export function MoonGoonsGame() {
       ) {
         missionSeedRef.current = networkMissionStartRef.current;
         resetRuntimeRef.current?.();
+        missionRunIdRef.current += 1;
+        setLastSettlement(null);
         phaseRef.current = "active";
         messageRef.current =
           crewSessionRef.current?.role === "guest"
@@ -2558,7 +2639,11 @@ export function MoonGoonsGame() {
           }
         });
         const incapacitated = downedRef.current;
-        const speedFactor = carried ? cargoData[carried.kind].speed : 1;
+        const cargoSpeed = carried ? cargoData[carried.kind].speed : 1;
+        const speedFactor =
+          carried && hasEquippedUpgrade(progressionRef.current, "cargo_harness")
+            ? 1 - (1 - cargoSpeed) * 0.55
+            : cargoSpeed;
         const driveInput = incapacitated
           ? 0
           : (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
@@ -2629,7 +2714,7 @@ export function MoonGoonsGame() {
           );
           thrusterFuel = Math.max(0, thrusterFuel - 46 * dt);
         } else if (playerHeight <= 0.01) {
-          thrusterFuel = Math.min(100, thrusterFuel + 31 * dt);
+          thrusterFuel = Math.min(thrusterCapacity, thrusterFuel + 31 * dt);
         }
         if (playerHeight > 0 || verticalVelocity > 0) {
           verticalVelocity -= MOON_GRAVITY * dt;
@@ -2717,7 +2802,12 @@ export function MoonGoonsGame() {
 
         const scanPressed = !incapacitated && keys.has("KeyQ");
         if (scanPressed && !scanLatchRef.current && scanCooldownRef.current <= 0) {
-          scanCooldownRef.current = 4;
+          const upgradedScanner = hasEquippedUpgrade(
+            progressionRef.current,
+            "survey_array",
+          );
+          const scanRange = upgradedScanner ? 21 : 16;
+          scanCooldownRef.current = upgradedScanner ? 3 : 4;
           scanAnimation = 0.01;
           scanRing.visible = true;
           scanRing.position.set(astronaut.position.x, 0.18, astronaut.position.z);
@@ -2726,7 +2816,7 @@ export function MoonGoonsGame() {
             deposits.forEach((deposit) => {
               if (
                 deposit.state === "hidden" &&
-                deposit.position.distanceTo(astronaut.position) < 16
+                deposit.position.distanceTo(astronaut.position) < scanRange
               ) {
                 deposit.state = "revealed";
                 deposit.group.visible = true;
@@ -3106,7 +3196,14 @@ export function MoonGoonsGame() {
             DRILL_JAM_WEAR,
             drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
           );
-          heatRef.current = Math.min(100, heatRef.current + dt * 33);
+          const upgradedCooling = hasEquippedUpgrade(
+            progressionRef.current,
+            "cooling_jacket",
+          );
+          heatRef.current = Math.min(
+            100,
+            heatRef.current + dt * 33 * (upgradedCooling ? 0.76 : 1),
+          );
           drill.rotation.y += dt * 34;
           drill.position.y = 2.7 + Math.sin(now * 0.07) * 0.045;
           const start = new THREE.Vector3();
@@ -3148,7 +3245,15 @@ export function MoonGoonsGame() {
         } else {
           drillBeam.visible = false;
           drillGlow.intensity = 0;
-          heatRef.current = Math.max(0, heatRef.current - dt * 25);
+          heatRef.current = Math.max(
+            0,
+            heatRef.current -
+              dt *
+                25 *
+                (hasEquippedUpgrade(progressionRef.current, "cooling_jacket")
+                  ? 1.2
+                  : 1),
+          );
           if (overheatedRef.current && heatRef.current <= 34) {
             overheatedRef.current = false;
             if (!drillJammedRef.current) {
@@ -3257,7 +3362,7 @@ export function MoonGoonsGame() {
               sound("pickup");
             } else if (
               astronaut.position.distanceTo(SHIP_POSITION) < 7.2 &&
-              scoreRef.current >= CONTRACT_TARGET
+              scoreRef.current >= CONTRACTS[activeContractIdRef.current].target
             ) {
               phaseRef.current = "success";
               messageRef.current = "Contract met. Launching before anyone finds more work.";
@@ -3270,9 +3375,12 @@ export function MoonGoonsGame() {
         if (timeRef.current <= 0) {
           const aboard = astronaut.position.distanceTo(SHIP_POSITION) < 7.2;
           phaseRef.current =
-            aboard && scoreRef.current >= CONTRACT_TARGET ? "success" : "failed";
+            aboard &&
+            scoreRef.current >= CONTRACTS[activeContractIdRef.current].target
+              ? "success"
+              : "failed";
           messageRef.current = aboard
-            ? scoreRef.current >= CONTRACT_TARGET
+            ? scoreRef.current >= CONTRACTS[activeContractIdRef.current].target
               ? "Automatic launch complete. Somehow, this counts as science."
               : "Crew recovered. Contract failed. Payroll is composing an email."
             : "Ship departed. Your emergency clone paperwork is being reviewed.";
@@ -3562,7 +3670,10 @@ export function MoonGoonsGame() {
           prompt = overheatedRef.current
             ? "DRILL COOLING · PLEASE PRETEND THIS IS NORMAL"
             : `HOLD F · EXTRACT ${cargoData[nearbySignal.kind].name.toUpperCase()} · ${Math.round(nearbySignal.progress)}%`;
-        } else if (scoreRef.current >= CONTRACT_TARGET && homeDistance < 7.2) {
+        } else if (
+          scoreRef.current >= CONTRACTS[activeContractIdRef.current].target &&
+          homeDistance < 7.2
+        ) {
           prompt = "E · LAUNCH WITH CONTRACT SECURED";
         } else if (nearbySignal) {
           prompt = `SIGNAL AHEAD · ${Math.round(
@@ -3626,6 +3737,7 @@ export function MoonGoonsGame() {
         ) {
           authoritativeStateRef.current = {
             missionSeed: missionSeedRef.current,
+            contractId: activeContractIdRef.current,
             phase: phaseRef.current,
             time: timeRef.current,
             score: scoreRef.current,
@@ -3695,6 +3807,9 @@ export function MoonGoonsGame() {
           tetheredCargo: tethered ? cargoData[tethered.kind].name : null,
           tetherDistance,
           tetherTeamLift: (tethered?.tetherOwnerIds.length ?? 0) >= 2,
+          contractId: activeContractIdRef.current,
+          contractTarget: CONTRACTS[activeContractIdRef.current].target,
+          thrusterCapacity,
         });
       }
 
@@ -3733,9 +3848,53 @@ export function MoonGoonsGame() {
     };
   }, [queueCrewAction, requestMouseLock, sound]);
 
+  useEffect(() => {
+    if (snapshot.phase !== "success" && snapshot.phase !== "failed") return;
+    if (settledRunIdRef.current === missionRunIdRef.current) return;
+    settledRunIdRef.current = missionRunIdRef.current;
+    const settlement = calculateMissionSettlement({
+      progression: progressionRef.current,
+      contractId: snapshot.contractId,
+      success: snapshot.phase === "success",
+      score: snapshot.score,
+      timeRemaining: snapshot.time,
+      samplesSecured: snapshot.depositsSecured,
+    });
+    progressionRef.current = settlement.progression;
+    setProgression(settlement.progression);
+    setLastSettlement({
+      creditsEarned: settlement.creditsEarned,
+      researchEarned: settlement.researchEarned,
+    });
+  }, [
+    snapshot.contractId,
+    snapshot.depositsSecured,
+    snapshot.phase,
+    snapshot.score,
+    snapshot.time,
+  ]);
+
+  const returnToHub = useCallback(() => {
+    if (crewSessionRef.current?.role === "guest") return;
+    phaseRef.current = "briefing";
+    authoritativeStateRef.current = null;
+    incomingAuthorityRef.current = null;
+    setSnapshot((current) => ({ ...current, phase: "briefing" }));
+  }, []);
+
   const resetMission = useCallback(() => {
     const session = crewSessionRef.current;
     if (session?.role === "guest") return;
+    activeContractIdRef.current = selectedContractId;
+    missionRunIdRef.current += 1;
+    setLastSettlement(null);
+    const contract = CONTRACTS[selectedContractId];
+    const thrusterCapacity = hasEquippedUpgrade(
+      progressionRef.current,
+      "thruster_reserve",
+    )
+      ? 125
+      : 100;
     missionSeedRef.current = session
       ? session.missionSeed
       : nextMissionSeed(missionSeedRef.current);
@@ -3746,7 +3905,7 @@ export function MoonGoonsGame() {
       : "Mission live. Find something expensive and remain technically alive.";
     setSnapshot({
       phase: "active",
-      time: MISSION_SECONDS,
+      time: contract.seconds,
       score: 0,
       heat: 0,
       overheated: false,
@@ -3774,19 +3933,22 @@ export function MoonGoonsGame() {
       depositsSecured: 0,
       prompt: "Q · SCAN FOR VALUABLE MATERIAL",
       homeDistance: 7,
-      thrusterFuel: 100,
+      thrusterFuel: thrusterCapacity,
       signalsTracked: 0,
       nearestSignalDistance: null,
       nearestSignalBearing: null,
       tetheredCargo: null,
       tetherDistance: null,
       tetherTeamLift: false,
+      contractId: selectedContractId,
+      contractTarget: contract.target,
+      thrusterCapacity,
     });
     requestMouseLock();
     sound("launch");
-  }, [requestMouseLock, sound]);
+  }, [requestMouseLock, selectedContractId, sound]);
 
-  const percent = Math.min(100, (snapshot.score / CONTRACT_TARGET) * 100);
+  const percent = Math.min(100, (snapshot.score / snapshot.contractTarget) * 100);
   const urgent = snapshot.phase === "active" && snapshot.time <= 30;
 
   return (
@@ -3803,7 +3965,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 019 // TEAM HAUL</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 020 // ORBITAL OPS</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -3875,12 +4037,14 @@ export function MoonGoonsGame() {
               <span>ACTIVE CONTRACT</span>
               <b>PM-{String(snapshot.missionSeed).padStart(5, "0")}</b>
             </div>
-            <h2>Practice Moon Procurement</h2>
-            <p>Secure ¢{CONTRACT_TARGET} in approved scientific material.</p>
+            <h2>{CONTRACTS[snapshot.contractId].name}</h2>
+            <p>
+              Secure ¢{snapshot.contractTarget} in approved scientific material.
+            </p>
             <div className={styles.progressHeader}>
               <span>SHIP MANIFEST</span>
               <strong>
-                ¢{snapshot.score} / ¢{CONTRACT_TARGET}
+                ¢{snapshot.score} / ¢{snapshot.contractTarget}
               </strong>
             </div>
             <div className={styles.progressTrack}>
@@ -4014,10 +4178,19 @@ export function MoonGoonsGame() {
             </div>
             <div className={styles.fuelLabel}>
               <span>EVA THRUSTER</span>
-              <strong>{Math.round(snapshot.thrusterFuel)}%</strong>
+              <strong>
+                {Math.round(snapshot.thrusterFuel)} / {snapshot.thrusterCapacity}
+              </strong>
             </div>
             <div className={styles.fuelTrack}>
-              <div style={{ width: `${snapshot.thrusterFuel}%` }} />
+              <div
+                style={{
+                  width: `${Math.min(
+                    100,
+                    (snapshot.thrusterFuel / snapshot.thrusterCapacity) * 100,
+                  )}%`,
+                }}
+              />
             </div>
           </aside>
 
@@ -4086,7 +4259,7 @@ export function MoonGoonsGame() {
             <strong>{snapshot.prompt}</strong>
           </div>
 
-          {snapshot.score >= CONTRACT_TARGET && (
+          {snapshot.score >= snapshot.contractTarget && (
             <div className={styles.launchButton}>
               RETURN TO THE SHIP + PRESS E TO LAUNCH
             </div>
@@ -4102,35 +4275,25 @@ export function MoonGoonsGame() {
               <span>S.P.A.C.E.</span>
               SCIENTIFIC PROCUREMENT AND COLLECTION ENTERPRISE
             </div>
-            <p className={styles.kicker}>COOPERATION SYSTEMS 7A // TEAM HAUL FIELD TEST</p>
+            <p className={styles.kicker}>HUB + PROGRESSION 8A // ORBITAL OPERATIONS</p>
             <h1>
-              SUIT UP.
+              CLOCK IN.
               <br />
-              <em>TRY NOT TO FLOAT.</em>
+              <em>CASH OUT.</em>
             </h1>
             <p className={styles.lede}>
-              Run the Practice Moon solo, or open a room for up to four scientists.
-              Crew movement, cargo, and mission results share one contract. Fire a tether
-              with T to tow loose samples; two scientists can team-lift dense cargo without
-              relying on voice chat.
+              Choose a contract, configure two field modules, and turn questionable
+              science into credits and research. Failure still pays recovery wages, so
+              S.P.A.C.E. can always afford to send you somewhere inadvisable again.
             </p>
-            <div className={styles.briefGrid}>
-              <div>
-                <span>01</span>
-                <strong>SCAN</strong>
-                <p>Pulse nearby terrain with Q. Cyan rings reveal buried material.</p>
-              </div>
-              <div>
-                <span>02</span>
-                <strong>EXTRACT</strong>
-                <p>Hold F beside a signal. If the drill jams, tap R three times.</p>
-              </div>
-              <div>
-                <span>03</span>
-                <strong>TEAM HAUL</strong>
-                <p>Press T near cargo. A second tether lifts it and makes heavy cores easier to tow.</p>
-              </div>
-            </div>
+            <OperationsHub
+              progression={progression}
+              selectedContractId={selectedContractId}
+              contractLocked={crewSession?.role === "guest"}
+              onContractSelect={setSelectedContractId}
+              onPurchaseUpgrade={buyUpgrade}
+              onToggleUpgrade={toggleUpgrade}
+            />
             <CrewLobby
               session={crewSession}
               room={crewRoom}
@@ -4197,14 +4360,22 @@ export function MoonGoonsGame() {
                 <span>STUNT BONUS</span>
                 <strong>¢{snapshot.stuntBonus}</strong>
               </div>
+              <div>
+                <span>CAREER PAY</span>
+                <strong>¢{lastSettlement?.creditsEarned ?? 0}</strong>
+              </div>
+              <div>
+                <span>RESEARCH FILED</span>
+                <strong>+{lastSettlement?.researchEarned ?? 0}</strong>
+              </div>
             </div>
             {crewSession?.role === "guest" ? (
               <p className={styles.crewWaiting}>
                 WAITING FOR MISSION LEAD TO FILE MINIMAL PAPERWORK…
               </p>
             ) : (
-              <button type="button" onClick={resetMission}>
-                FILE MINIMAL PAPERWORK + RETRY
+              <button type="button" onClick={returnToHub}>
+                RETURN TO ORBITAL OPERATIONS
               </button>
             )}
           </div>

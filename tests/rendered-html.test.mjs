@@ -81,12 +81,13 @@ test("production server renders the Moon Goons mission shell", async () => {
 
   const html = await response.text();
   assert.match(html, /<title>Moon Goons — Practice Moon \| Moon Goons<\/title>/i);
-  assert.match(html, /SUIT UP/);
-  assert.match(html, /TRY NOT TO FLOAT/);
+  assert.match(html, /CLOCK IN/);
+  assert.match(html, /CASH OUT/);
   assert.match(html, /SOLO FIELD TEST/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
-  assert.match(html, /COOPERATION SYSTEMS 7A \/\/ TEAM HAUL FIELD TEST/);
-  assert.match(html, /BUILD 019/);
+  assert.match(html, /HUB \+ PROGRESSION 8A \/\/ ORBITAL OPERATIONS/);
+  assert.match(html, /BUILD 020/);
+  assert.match(html, /GOON CAREER TERMINAL/);
   assert.match(html, /HOST CREW/);
   assert.match(html, /JOIN CREW/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
