@@ -32,7 +32,13 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   missionGuide: true,
 };
 
-export type CargoKind = "ferric" | "glass" | "platinum" | "vial";
+export type CargoKind =
+  | "ferric"
+  | "glass"
+  | "platinum"
+  | "vial"
+  | "helium"
+  | "fossil";
 
 export type CargoDefinition = {
   name: string;
@@ -49,6 +55,7 @@ export type CargoDefinition = {
   horizontalRetention: number;
   throwSpeed: number;
   throwLift: number;
+  magnetic: boolean;
 };
 
 export type DepositDefinition = {
@@ -73,6 +80,7 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     horizontalRetention: 0.86,
     throwSpeed: 8.2,
     throwLift: 3.5,
+    magnetic: true,
   },
   glass: {
     name: "Lunar Glass",
@@ -89,6 +97,7 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     horizontalRetention: 0.78,
     throwSpeed: 8.2,
     throwLift: 3.5,
+    magnetic: false,
   },
   platinum: {
     name: "Platinum Core",
@@ -105,6 +114,7 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     horizontalRetention: 0.7,
     throwSpeed: 6.1,
     throwLift: 2.7,
+    magnetic: true,
   },
   vial: {
     name: "Cryogenic Sample Vial",
@@ -121,6 +131,41 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     horizontalRetention: 0.82,
     throwSpeed: 8.2,
     throwLift: 3.5,
+    magnetic: false,
+  },
+  helium: {
+    name: "Helium-3 Canister",
+    value: 510,
+    speed: 0.92,
+    color: 0xffb45f,
+    emissive: 0x8d321f,
+    structure: "PRESSURIZED // BOUNCY",
+    impactThreshold: 2.8,
+    impactDamage: 0.045,
+    minimumCondition: 0.18,
+    breakSpeed: 12.4,
+    restitution: 0.72,
+    horizontalRetention: 0.91,
+    throwSpeed: 9.4,
+    throwLift: 4.25,
+    magnetic: true,
+  },
+  fossil: {
+    name: "Lunar Microfossil",
+    value: 390,
+    speed: 0.8,
+    color: 0xd7c38b,
+    emissive: 0x5f4b27,
+    structure: "DELICATE // ARCHIVAL",
+    impactThreshold: 2.65,
+    impactDamage: 0.058,
+    minimumCondition: 0.2,
+    breakSpeed: null,
+    restitution: 0.31,
+    horizontalRetention: 0.76,
+    throwSpeed: 7.7,
+    throwLift: 3.35,
+    magnetic: false,
   },
 };
 
@@ -146,6 +191,8 @@ const missionCargoKinds: CargoKind[] = [
   "glass",
   "platinum",
   "vial",
+  "helium",
+  "fossil",
   "ferric",
 ];
 

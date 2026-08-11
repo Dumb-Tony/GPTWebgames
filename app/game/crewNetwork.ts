@@ -21,6 +21,8 @@ export type CrewActionType =
   | "interact"
   | "throw"
   | "tether"
+  | "magnet"
+  | "stabilize"
   | "ping"
   | "ping_help"
   | "ping_cargo"

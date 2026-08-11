@@ -158,6 +158,8 @@ type Snapshot = {
   throwDistance: number | null;
   message: string;
   scanCooldown: number;
+  magnetCooldown: number;
+  stabilizerCharges: number;
   depositsSecured: number;
   prompt: string;
   homeDistance: number;
@@ -201,6 +203,94 @@ function standardMaterial(
     flatShading: true,
     ...options,
   });
+}
+
+function colorCss(color: number) {
+  return `#${color.toString(16).padStart(6, "0")}`;
+}
+
+function createMoonTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const random = seededRandom(44021);
+  context.fillStyle = "#4a4d5c";
+  context.fillRect(0, 0, 256, 256);
+  for (let index = 0; index < 540; index += 1) {
+    const shade = 54 + Math.floor(random() * 46);
+    const alpha = 0.08 + random() * 0.24;
+    context.fillStyle = `rgba(${shade}, ${shade + 2}, ${shade + 10}, ${alpha})`;
+    const radius = 0.4 + random() * (index % 19 === 0 ? 6.5 : 2.2);
+    context.beginPath();
+    context.arc(random() * 256, random() * 256, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  for (let index = 0; index < 14; index += 1) {
+    const x = random() * 256;
+    const y = random() * 256;
+    const radius = 5 + random() * 13;
+    const gradient = context.createRadialGradient(x, y, radius * 0.2, x, y, radius);
+    gradient.addColorStop(0, "rgba(30, 32, 42, 0.22)");
+    gradient.addColorStop(0.7, "rgba(42, 45, 56, 0.12)");
+    gradient.addColorStop(1, "rgba(120, 124, 142, 0.08)");
+    context.fillStyle = gradient;
+    context.beginPath();
+    context.arc(x, y, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(8, 8);
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function createCargoTexture(kind: CargoKind) {
+  const data = cargoData[kind];
+  const canvas = document.createElement("canvas");
+  canvas.width = 128;
+  canvas.height = 128;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  context.fillStyle = colorCss(data.color);
+  context.fillRect(0, 0, 128, 128);
+  const random = seededRandom(8300 + Object.keys(cargoData).indexOf(kind) * 181);
+  for (let index = 0; index < 95; index += 1) {
+    const alpha = 0.06 + random() * 0.16;
+    context.fillStyle = `rgba(10, 13, 22, ${alpha})`;
+    context.beginPath();
+    context.arc(random() * 128, random() * 128, 0.6 + random() * 2.8, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.strokeStyle = colorCss(data.emissive);
+  context.lineWidth = kind === "fossil" ? 5 : 9;
+  context.globalAlpha = 0.55;
+  if (kind === "fossil") {
+    for (let radius = 10; radius <= 50; radius += 9) {
+      context.beginPath();
+      context.arc(64, 64, radius, Math.PI * 0.18, Math.PI * 1.8);
+      context.stroke();
+    }
+  } else {
+    for (let x = -128; x < 256; x += 34) {
+      context.beginPath();
+      context.moveTo(x, 128);
+      context.lineTo(x + 128, 0);
+      context.stroke();
+    }
+  }
+  context.globalAlpha = 1;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(kind === "fossil" ? 1 : 1.5, kind === "fossil" ? 1 : 1.5);
+  texture.anisotropy = 4;
+  return texture;
 }
 
 function box(
@@ -590,6 +680,7 @@ function createDeposit(
   definition: DepositDefinition,
 ): DepositRuntime {
   const data = cargoData[definition.kind];
+  const cargoTexture = createCargoTexture(definition.kind);
   const group = new THREE.Group();
   group.position.set(definition.position[0], 0.25, definition.position[1]);
   group.visible = false;
@@ -640,6 +731,71 @@ function createDeposit(
     vial.add(glassBody, specimen, topCap, bottomCap);
     vial.rotation.z = 0.12;
     core = vial;
+  } else if (definition.kind === "helium") {
+    const canister = new THREE.Group();
+    const body = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.72, 0.72, 1.82, 12),
+      standardMaterial(data.color, {
+        map: cargoTexture,
+        emissive: data.emissive,
+        emissiveIntensity: 0.72,
+        metalness: 0.62,
+        roughness: 0.3,
+      }),
+    );
+    const capMaterial = standardMaterial(palette.graphite, {
+      metalness: 0.78,
+      roughness: 0.27,
+    });
+    const topCap = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.82, 0.82, 0.24, 12),
+      capMaterial,
+    );
+    topCap.position.y = 1.02;
+    const bottomCap = topCap.clone();
+    bottomCap.position.y = -1.02;
+    const valve = cylinder(0.18, 0.28, 0.4, palette.coral, [0, 1.3, 0], 8, {
+      emissive: palette.coral,
+      emissiveIntensity: 1.3,
+      metalness: 0.66,
+    });
+    const bumper = new THREE.Mesh(
+      new THREE.TorusGeometry(0.8, 0.09, 8, 20),
+      standardMaterial(palette.cream, { metalness: 0.58, roughness: 0.34 }),
+    );
+    bumper.rotation.x = Math.PI / 2;
+    const lowerBumper = bumper.clone();
+    bumper.position.y = 0.62;
+    lowerBumper.position.y = -0.62;
+    canister.add(body, topCap, bottomCap, valve, bumper, lowerBumper);
+    canister.rotation.z = -0.14;
+    core = canister;
+  } else if (definition.kind === "fossil") {
+    const fossil = new THREE.Group();
+    const tablet = new THREE.Mesh(
+      new THREE.CylinderGeometry(1.04, 1.12, 0.42, 11),
+      standardMaterial(data.color, {
+        map: cargoTexture,
+        emissive: data.emissive,
+        emissiveIntensity: 0.46,
+        roughness: 0.92,
+      }),
+    );
+    tablet.rotation.x = Math.PI / 2;
+    tablet.scale.y = 0.82;
+    const archiveBand = new THREE.Mesh(
+      new THREE.TorusGeometry(1.08, 0.055, 7, 24),
+      standardMaterial(palette.cyan, {
+        emissive: palette.cyan,
+        emissiveIntensity: 1.8,
+        metalness: 0.35,
+        roughness: 0.4,
+      }),
+    );
+    archiveBand.position.z = 0.23;
+    fossil.add(tablet, archiveBand);
+    fossil.rotation.y = 0.16;
+    core = fossil;
   } else {
     const coreGeometry =
       definition.kind === "glass"
@@ -651,6 +807,7 @@ function createDeposit(
     core = new THREE.Mesh(
       coreGeometry,
       standardMaterial(data.color, {
+        map: cargoTexture,
         emissive: data.emissive,
         emissiveIntensity: definition.kind === "glass" ? 1.7 : 0.85,
         metalness: definition.kind === "platinum" ? 0.78 : 0.2,
@@ -738,6 +895,7 @@ function createMoonSurface() {
   const surface = new THREE.Mesh(
     geometry,
     standardMaterial(palette.lunar, {
+      map: createMoonTexture(),
       roughness: 1,
       metalness: 0,
     }),
@@ -928,9 +1086,8 @@ function createMeteorHazards(scene: THREE.Scene) {
 
 function createPressureVents() {
   const positions: Array<[number, number]> = [
-    [-4, 18],
-    [16, 3],
-    [29, -18],
+    [-8, 23],
+    [31, -21],
   ];
   return positions.map(([x, z], index) => {
     const vent = new THREE.Group();
@@ -1109,10 +1266,14 @@ export function MoonGoonsGame() {
   const recoveryProgressRef = useRef(0);
   const suitRecoveriesRef = useRef(0);
   const scanCooldownRef = useRef(0);
+  const magnetCooldownRef = useRef(0);
+  const stabilizerChargesRef = useRef(2);
   const messageRef = useRef(INITIAL_MESSAGE);
   const carryingRef = useRef<number | null>(null);
   const interactLatchRef = useRef(false);
   const scanLatchRef = useRef(false);
+  const magnetLatchRef = useRef(false);
+  const stabilizerLatchRef = useRef(false);
   const repairLatchRef = useRef(false);
   const tutorialMovedRef = useRef(false);
   const tutorialScannedRef = useRef(false);
@@ -1225,6 +1386,8 @@ export function MoonGoonsGame() {
     throwDistance: null,
     message: INITIAL_MESSAGE,
     scanCooldown: 0,
+    magnetCooldown: 0,
+    stabilizerCharges: 2,
     depositsSecured: 0,
     prompt: "Q · SCAN FOR VALUABLE MATERIAL",
     homeDistance: 7,
@@ -1788,6 +1951,8 @@ export function MoonGoonsGame() {
     let animationFrame = 0;
     let previous = performance.now();
     let padTetherLatch = false;
+    let padMagnetLatch = false;
+    let padStabilizerLatch = false;
     let padMenuLatch = false;
     let padPingLatch = false;
     let lastPadConnected = false;
@@ -1884,6 +2049,63 @@ export function MoonGoonsGame() {
       sound("pickup");
     };
 
+    const fireMagneticRetriever = (
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      const target = deposits
+        .filter(
+          (deposit) =>
+            deposit.state === "cargo" &&
+            deposit.ownerId === null &&
+            cargoData[deposit.kind].magnetic,
+        )
+        .sort(
+          (a, b) =>
+            a.group.position.distanceTo(ownerPosition) -
+            b.group.position.distanceTo(ownerPosition),
+        )[0];
+      const distance = target?.group.position.distanceTo(ownerPosition) ?? Infinity;
+      if (!target || distance > 18) {
+        messageRef.current = `${ownerName}'s magnetic retriever found no cooperative metal within 18m.`;
+        return false;
+      }
+
+      if (target.group.parent !== scene) scene.attach(target.group);
+      const pullDirection = ownerPosition
+        .clone()
+        .add(new THREE.Vector3(0, 1.3, 0))
+        .sub(target.group.position)
+        .normalize();
+      target.tetherOwnerIds = [];
+      target.isBallistic = true;
+      target.bounceCount = 0;
+      target.velocity.copy(pullDirection).multiplyScalar(8.6 + Math.min(4, distance * 0.2));
+      target.velocity.y = Math.max(2.6, target.velocity.y + 1.8);
+      messageRef.current = `${ownerName} magnet-yanked ${cargoData[target.kind].name}. Ducking is now optional but wise.`;
+      sound("launch");
+      return true;
+    };
+
+    const stabilizeSample = (ownerId: string, ownerName: string) => {
+      const held = deposits.find((deposit) => deposit.ownerId === ownerId);
+      if (!held) {
+        messageRef.current = `${ownerName} sprayed stabilizer foam on absolutely nothing.`;
+        return false;
+      }
+      if (held.condition >= 0.995) {
+        messageRef.current = `${cargoData[held.kind].name} is already pristine. Foam ration preserved.`;
+        return false;
+      }
+      const previousCondition = held.condition;
+      held.condition = Math.min(1, held.condition + 0.28);
+      messageRef.current = `${ownerName} stabilized ${cargoData[held.kind].name}: ${Math.round(
+        previousCondition * 100,
+      )}% → ${Math.round(held.condition * 100)}% condition. The foam is probably archival.`;
+      sound("repair");
+      return true;
+    };
+
     const applySuitDamage = (amount: number) => {
       if (damageCooldown > 0 || downedRef.current) return "ignored" as const;
 
@@ -1951,6 +2173,10 @@ export function MoonGoonsGame() {
       suitRecoveriesRef.current = 0;
       repairLatchRef.current = false;
       scanCooldownRef.current = 0;
+      magnetCooldownRef.current = 0;
+      stabilizerChargesRef.current = 2;
+      magnetLatchRef.current = false;
+      stabilizerLatchRef.current = false;
       tutorialMovedRef.current = false;
       tutorialScannedRef.current = false;
       tutorialDrilledRef.current = false;
@@ -2052,6 +2278,36 @@ export function MoonGoonsGame() {
             session?.name ?? "SOLO GOON",
             astronaut.position,
           );
+        }
+      }
+      if (event.code === "KeyG" && !event.repeat && phaseRef.current === "active") {
+        const session = crewSessionRef.current;
+        if (magnetCooldownRef.current > 0) {
+          messageRef.current = `Magnetic retriever recharging: ${magnetCooldownRef.current.toFixed(1)}s.`;
+        } else if (session?.role === "guest") {
+          queueCrewAction("magnet");
+          magnetCooldownRef.current = 6.5;
+          messageRef.current = "Magnetic retrieval request sent to mission lead authority.";
+          sound("scan");
+        } else if (fireMagneticRetriever(session?.name ?? "SOLO GOON", astronaut.position)) {
+          magnetCooldownRef.current = 6.5;
+        }
+      }
+      if (event.code === "KeyC" && !event.repeat && phaseRef.current === "active") {
+        const session = crewSessionRef.current;
+        if (stabilizerChargesRef.current <= 0) {
+          messageRef.current = "Sample stabilizer empty. The foam budget has been respected.";
+        } else if (session?.role === "guest") {
+          queueCrewAction("stabilize");
+          stabilizerChargesRef.current -= 1;
+          messageRef.current = "Sample stabilization request sent to mission lead authority.";
+        } else if (
+          stabilizeSample(
+            session?.memberId ?? "solo",
+            session?.name ?? "SOLO GOON",
+          )
+        ) {
+          stabilizerChargesRef.current -= 1;
         }
       }
       keysRef.current.add(event.code);
@@ -2244,6 +2500,16 @@ export function MoonGoonsGame() {
 
         if (action.type === "tether") {
           toggleTether(member.id, member.name, memberPosition);
+          return;
+        }
+
+        if (action.type === "magnet") {
+          fireMagneticRetriever(member.name, memberPosition);
+          return;
+        }
+
+        if (action.type === "stabilize") {
+          stabilizeSample(member.id, member.name);
           return;
         }
 
@@ -2474,6 +2740,45 @@ export function MoonGoonsGame() {
       }
       padTetherLatch = pad.tether;
 
+      if (pad.magnet && !padMagnetLatch && gameplayInputEnabled) {
+        const activeSession = crewSessionRef.current;
+        if (magnetCooldownRef.current > 0) {
+          messageRef.current = `Magnetic retriever recharging: ${magnetCooldownRef.current.toFixed(1)}s.`;
+        } else if (activeSession?.role === "guest") {
+          queueCrewAction("magnet");
+          magnetCooldownRef.current = 6.5;
+          messageRef.current = "Magnetic retrieval request sent to mission lead authority.";
+          sound("scan");
+        } else if (
+          fireMagneticRetriever(
+            activeSession?.name ?? "SOLO GOON",
+            astronaut.position,
+          )
+        ) {
+          magnetCooldownRef.current = 6.5;
+        }
+      }
+      padMagnetLatch = pad.magnet;
+
+      if (pad.stabilize && !padStabilizerLatch && gameplayInputEnabled) {
+        const activeSession = crewSessionRef.current;
+        if (stabilizerChargesRef.current <= 0) {
+          messageRef.current = "Sample stabilizer empty. The foam budget has been respected.";
+        } else if (activeSession?.role === "guest") {
+          queueCrewAction("stabilize");
+          stabilizerChargesRef.current -= 1;
+          messageRef.current = "Sample stabilization request sent to mission lead authority.";
+        } else if (
+          stabilizeSample(
+            activeSession?.memberId ?? "solo",
+            activeSession?.name ?? "SOLO GOON",
+          )
+        ) {
+          stabilizerChargesRef.current -= 1;
+        }
+      }
+      padStabilizerLatch = pad.stabilize;
+
       const padPingType: CrewActionType | null = pad.pingHelp
         ? "ping_help"
         : pad.pingCargo
@@ -2522,10 +2827,10 @@ export function MoonGoonsGame() {
 
       world.pressureVents.forEach((vent, index) => {
         const total = now * 0.001 + (vent.userData.offset as number);
-        const cycleTime = total % 9;
-        const cycle = Math.floor(total / 9);
-        const warning = cycleTime >= 6.15 && cycleTime < 7.25;
-        const erupting = cycleTime >= 7.25 && cycleTime < 8.55;
+        const cycleTime = total % 14.5;
+        const cycle = Math.floor(total / 14.5);
+        const warning = cycleTime >= 11.35 && cycleTime < 12.4;
+        const erupting = cycleTime >= 12.4 && cycleTime < 13.55;
         vent.userData.warning = warning;
         vent.userData.erupting = erupting;
         vent.userData.cycle = cycle;
@@ -2567,6 +2872,7 @@ export function MoonGoonsGame() {
       ) {
         timeRef.current = Math.max(0, timeRef.current - dt);
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
+        magnetCooldownRef.current = Math.max(0, magnetCooldownRef.current - dt);
         damageCooldown = Math.max(0, damageCooldown - dt);
         const jumpPressed = keys.has("Space") || pad.jump;
         const scanInput = keys.has("KeyQ") || pad.scan;
@@ -3749,6 +4055,18 @@ export function MoonGoonsGame() {
               a.position.distanceTo(astronaut.position) -
               b.position.distanceTo(astronaut.position),
           )[0];
+        const magneticCargo = deposits
+          .filter(
+            (deposit) =>
+              deposit.state === "cargo" &&
+              deposit.ownerId === null &&
+              cargoData[deposit.kind].magnetic,
+          )
+          .sort(
+            (a, b) =>
+              a.position.distanceTo(astronaut.position) -
+              b.position.distanceTo(astronaut.position),
+          )[0];
         const nearbySignal = deposits
           .filter(
             (deposit) =>
@@ -3812,6 +4130,9 @@ export function MoonGoonsGame() {
                     currentThrowPrediction.horizontalDistance,
                   )}m · BAY ${Math.round(receiverDistance)}m`
                 : `E DROP · SHIFT+E THROW · BAY ${Math.round(receiverDistance)}m`;
+          if (held.condition < 0.995 && stabilizerChargesRef.current > 0) {
+            prompt += ` · C FOAM ${Math.round(held.condition * 100)}%`;
+          }
         } else if (
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
@@ -3819,6 +4140,14 @@ export function MoonGoonsGame() {
           prompt = `E · PICK UP ${cargoData[
             nearbyCargo.kind
           ].name.toUpperCase()} · ${cargoData[nearbyCargo.kind].structure}`;
+        } else if (
+          magneticCargo &&
+          magneticCargo.position.distanceTo(astronaut.position) <= 18 &&
+          magnetCooldownRef.current <= 0
+        ) {
+          prompt = `G · MAG-YANK ${cargoData[magneticCargo.kind].name.toUpperCase()} · ${Math.round(
+            magneticCargo.position.distanceTo(astronaut.position),
+          )}m`;
         } else if (
           nearbySignal &&
           nearbySignal.position.distanceTo(astronaut.position) < 3
@@ -3953,6 +4282,8 @@ export function MoonGoonsGame() {
               : null,
           message: messageRef.current,
           scanCooldown: scanCooldownRef.current,
+          magnetCooldown: magnetCooldownRef.current,
+          stabilizerCharges: stabilizerChargesRef.current,
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
           prompt,
           homeDistance,
@@ -4103,6 +4434,8 @@ export function MoonGoonsGame() {
       throwDistance: null,
       message: messageRef.current,
       scanCooldown: 0,
+      magnetCooldown: 0,
+      stabilizerCharges: 2,
       depositsSecured: 0,
       prompt: "Q · SCAN FOR VALUABLE MATERIAL",
       homeDistance: 7,
@@ -4159,7 +4492,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 023 // HUB CONTROL FIX</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 024 // SALVAGE KIT</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -4391,6 +4724,18 @@ export function MoonGoonsGame() {
                   : "READY · 16m"}
               </strong>
             </div>
+            <div className={styles.utilityToolStatus}>
+              <span>MAG RETRIEVER G</span>
+              <strong>
+                {snapshot.magnetCooldown <= 0
+                  ? "READY · METAL 18m"
+                  : `CHARGING ${snapshot.magnetCooldown.toFixed(1)}s`}
+              </strong>
+            </div>
+            <div className={styles.utilityToolStatus}>
+              <span>STABILIZER C</span>
+              <strong>{snapshot.stabilizerCharges} FOAM CHARGES</strong>
+            </div>
             <div className={styles.fuelLabel}>
               <span>EVA THRUSTER</span>
               <strong>
@@ -4416,6 +4761,8 @@ export function MoonGoonsGame() {
               <span><kbd>Y</kbd> SCAN</span>
               <span><kbd>RT</kbd> DRILL</span>
               <span><kbd>LB</kbd> TETHER</span>
+              <span><kbd>LT</kbd> MAGNET</span>
+              <span><kbd>RS</kbd> FOAM</span>
               <span><kbd>RB</kbd> THROW</span>
               <span><kbd>B</kbd> REPAIR</span>
             </div>
@@ -4456,6 +4803,14 @@ export function MoonGoonsGame() {
             <div>
               <kbd>T</kbd>
               <span>TETHER / RELEASE</span>
+            </div>
+            <div>
+              <kbd>G</kbd>
+              <span>MAGNETIC RETRIEVER</span>
+            </div>
+            <div>
+              <kbd>C</kbd>
+              <span>STABILIZE SAMPLE</span>
             </div>
             {crewSession && (
               <>

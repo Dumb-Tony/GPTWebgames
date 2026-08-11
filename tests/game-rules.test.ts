@@ -203,12 +203,12 @@ test("mission generation is deterministic, varied, unique, and completable", () 
 
   for (let seed = 1; seed <= 200; seed += 1) {
     const mission = createMissionDepositDefinitions(seed);
-    assert.equal(mission.length, 5);
-    assert.equal(new Set(mission.map(({ position }) => position.join(","))).size, 5);
+    assert.equal(mission.length, 7);
+    assert.equal(new Set(mission.map(({ position }) => position.join(","))).size, 7);
     assert.ok(missionMaximumValue(mission) >= CONTRACT_TARGET);
     assert.deepEqual(
       mission.map(({ kind }) => kind).sort(),
-      ["ferric", "ferric", "glass", "platinum", "vial"],
+      ["ferric", "ferric", "fossil", "glass", "helium", "platinum", "vial"],
     );
   }
 });
@@ -282,6 +282,17 @@ test("cryogenic vials degrade on rough impacts and shatter at the redline", () =
   assert.equal(calculateCargoImpact("platinum", 1, 20).broken, false);
 });
 
+test("new field samples have distinct handling and failure personalities", () => {
+  assert.equal(calculateCargoValue("helium", 1), 510);
+  assert.equal(calculateCargoValue("fossil", 0.5), 195);
+  assert.ok(
+    calculateCargoBounce("helium", 6, 0).verticalSpeed >
+      calculateCargoBounce("platinum", 6, 0).verticalSpeed,
+  );
+  assert.equal(calculateCargoImpact("helium", 1, 12.4).broken, true);
+  assert.equal(calculateCargoImpact("fossil", 1, 12.4).broken, false);
+});
+
 test("throw prediction exposes distance and cargo-specific first-impact risk", () => {
   const ordinaryVialThrow = predictCargoThrow("vial", 1, 2.4, 8.2, 3.5);
   assert.ok(ordinaryVialThrow.horizontalDistance > 16);
@@ -352,7 +363,9 @@ test("standard controllers apply deadzones and expose the complete field control
   buttons[3] = { pressed: true, value: 1 };
   buttons[4] = { pressed: true, value: 1 };
   buttons[5] = { pressed: true, value: 1 };
+  buttons[6] = { pressed: true, value: 1 };
   buttons[7] = { pressed: false, value: 0.8 };
+  buttons[11] = { pressed: true, value: 1 };
   buttons[13] = { pressed: true, value: 1 };
   const input = readStandardGamepad({
     connected: true,
@@ -369,6 +382,8 @@ test("standard controllers apply deadzones and expose the complete field control
   assert.equal(input.scan, true);
   assert.equal(input.drill, true);
   assert.equal(input.tether, true);
+  assert.equal(input.magnet, true);
+  assert.equal(input.stabilize, true);
   assert.equal(input.throwCargo, true);
   assert.equal(input.pingDanger, true);
 });

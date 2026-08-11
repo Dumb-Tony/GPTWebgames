@@ -18,6 +18,8 @@ const actionTypes = new Set<CrewActionType>([
   "interact",
   "throw",
   "tether",
+  "magnet",
+  "stabilize",
   "ping",
   "ping_help",
   "ping_cargo",

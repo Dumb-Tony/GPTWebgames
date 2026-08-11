@@ -279,6 +279,7 @@
 .suitLabel,
 .scanStatus,
 .tetherStatus,
+.utilityToolStatus,
 .fuelLabel,
 .signalTelemetry {
   font-family: monospace;
@@ -318,6 +319,7 @@
 .heatLabel,
 .scanStatus,
 .tetherStatus,
+.utilityToolStatus,
 .fuelLabel,
 .signalTelemetry {
   display: flex;
@@ -502,6 +504,18 @@
 
 .tetherTeamLift strong {
   color: var(--green);
+}
+
+.utilityToolStatus {
+  margin-top: 5px;
+  padding: 3px 1px;
+  color: var(--muted);
+  font-size: 8px;
+  letter-spacing: 0.035em;
+}
+
+.utilityToolStatus strong {
+  color: var(--cyan);
 }
 
 .fuelLabel {

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:net";
+import { mkdtemp, readdir, rm, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import test, { after, before } from "node:test";
 import { fileURLToPath } from "node:url";
@@ -10,6 +11,35 @@ const wranglerCli = path.join(projectRoot, "node_modules", "wrangler", "bin", "w
 let productionServer;
 let baseUrl;
 let serverOutput = "";
+let persistenceDirectory;
+let testWranglerConfig;
+
+async function runWrangler(args) {
+  return new Promise((resolve, reject) => {
+    const command = spawn(process.execPath, [wranglerCli, ...args], {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        WRANGLER_LOG_PATH: persistenceDirectory
+          ? path.join(persistenceDirectory, "wrangler.log")
+          : undefined,
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let output = "";
+    command.stdout.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    command.stderr.on("data", (chunk) => {
+      output += chunk.toString();
+    });
+    command.once("error", reject);
+    command.once("close", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`Wrangler command failed (${code}).\n${output}`));
+    });
+  });
+}
 
 async function reservePort() {
   return new Promise((resolve, reject) => {
@@ -40,24 +70,78 @@ async function waitForServer(url) {
 before(async () => {
   const port = await reservePort();
   baseUrl = `http://127.0.0.1:${port}`;
+  persistenceDirectory = await mkdtemp(path.join(projectRoot, ".wrangler-test-"));
+  const persistenceArgument = path.relative(projectRoot, persistenceDirectory);
+  testWranglerConfig = path.join(
+    projectRoot,
+    "dist",
+    "server",
+    `wrangler.test-${path.basename(persistenceDirectory)}.json`,
+  );
+  await writeFile(
+    testWranglerConfig,
+    JSON.stringify({
+      name: "moon-goons-test",
+      compatibility_date: "2026-05-15",
+      compatibility_flags: ["nodejs_compat"],
+      main: "index.js",
+      no_bundle: true,
+      rules: [{ type: "ESModule", globs: ["**/*.js", "**/*.mjs"] }],
+      assets: { directory: "../client" },
+      d1_databases: [
+        {
+          binding: "DB",
+          database_name: "site-creator-d1",
+          database_id: "00000000-0000-4000-8000-000000000000",
+        },
+      ],
+    }),
+  );
+  const migrationDirectory = path.join(projectRoot, "drizzle");
+  const migrationFiles = (await readdir(migrationDirectory))
+    .filter((file) => file.endsWith(".sql"))
+    .sort();
+  for (const migrationFile of migrationFiles) {
+    await runWrangler([
+      "d1",
+      "execute",
+      "site-creator-d1",
+      "--local",
+      "--config",
+      testWranglerConfig,
+      "--persist-to",
+      persistenceArgument,
+      "--file",
+      path.join(migrationDirectory, migrationFile),
+    ]);
+  }
   productionServer = spawn(
     process.execPath,
     [
       wranglerCli,
       "dev",
       "--config",
-      "dist/server/wrangler.json",
+      testWranglerConfig,
       "--ip",
       "127.0.0.1",
       "--port",
       String(port),
       "--local",
+      "--persist-to",
+      persistenceArgument,
       "--log-level",
       "error",
       "--show-interactive-dev-session",
       "false",
     ],
-    { cwd: projectRoot, stdio: ["ignore", "pipe", "pipe"] },
+    {
+      cwd: projectRoot,
+      env: {
+        ...process.env,
+        WRANGLER_LOG_PATH: path.join(persistenceDirectory, "wrangler.log"),
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    },
   );
   productionServer.stdout.on("data", (chunk) => {
     serverOutput += chunk.toString();
@@ -68,8 +152,28 @@ before(async () => {
   await waitForServer(baseUrl);
 });
 
-after(() => {
-  productionServer?.kill();
+after(async () => {
+  if (productionServer && productionServer.exitCode === null) {
+    await new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 2_000);
+      productionServer.once("exit", () => {
+        clearTimeout(timeout);
+        resolve();
+      });
+      productionServer.kill();
+    });
+  }
+  if (persistenceDirectory) {
+    await rm(persistenceDirectory, {
+      recursive: true,
+      force: true,
+      maxRetries: 6,
+      retryDelay: 150,
+    });
+  }
+  if (testWranglerConfig) {
+    await unlink(testWranglerConfig).catch(() => undefined);
+  }
 });
 
 test("production server renders the Moon Goons mission shell", async () => {
@@ -89,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 023/);
+  assert.match(html, /BUILD 024/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -131,4 +235,139 @@ test("crew endpoint validates an empty call sign without touching storage", asyn
   assert.equal(response.status, 400);
   const payload = await response.json();
   assert.equal(payload.error, "Use a call sign with at least two characters.");
+});
+
+test("Crew Link supports a two-player room, authoritative launch, tool action, and clean shutdown", async () => {
+  const createResponse = await fetch(new URL("/api/crew", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "create", name: "CAPTAIN TEST" }),
+  });
+  assert.equal(createResponse.status, 201);
+  const { session: host } = await createResponse.json();
+  assert.equal(host.role, "host");
+  assert.match(host.roomCode, /^[A-Z2-9]{5}$/);
+
+  const joinResponse = await fetch(new URL("/api/crew", baseUrl), {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      action: "join",
+      name: "MAGNET INTERN",
+      roomCode: host.roomCode,
+    }),
+  });
+  assert.equal(joinResponse.status, 201);
+  const { session: guest } = await joinResponse.json();
+  assert.equal(guest.role, "guest");
+  assert.equal(guest.missionSeed, host.missionSeed);
+
+  const crewUrl = (session) =>
+    new URL(
+      `/api/crew?room=${encodeURIComponent(session.roomCode)}&member=${encodeURIComponent(
+        session.memberId,
+      )}`,
+      baseUrl,
+    );
+  const headersFor = (session) => ({
+    "content-type": "application/json",
+    "x-crew-token": session.token,
+  });
+  const state = {
+    missionSeed: host.missionSeed,
+    contractId: "standard_procurement",
+    phase: "active",
+    time: 180,
+    score: 0,
+    message: "Crew contract live.",
+    deposits: [],
+    stats: {
+      repairsCompleted: 0,
+      airmailDeliveries: 0,
+      bankShotDeliveries: 0,
+      stuntBonus: 0,
+      cargoBounces: 0,
+      brokenSamples: 0,
+    },
+  };
+
+  const launchResponse = await fetch(crewUrl(host), {
+    method: "PATCH",
+    headers: headersFor(host),
+    body: JSON.stringify({
+      presence: { x: -12, y: 0, z: 5, yaw: 0, inputMask: 0 },
+      phase: "active",
+      authoritativeState: state,
+    }),
+  });
+  assert.equal(launchResponse.status, 200);
+  const launched = await launchResponse.json();
+  assert.equal(launched.room.phase, "active");
+  assert.equal(launched.room.members.length, 2);
+
+  const actionResponse = await fetch(crewUrl(guest), {
+    method: "PATCH",
+    headers: headersFor(guest),
+    body: JSON.stringify({
+      presence: { x: 8.5, y: 0, z: -3.25, yaw: 0.7, inputMask: 2 },
+      action: { sequence: 1, type: "magnet" },
+    }),
+  });
+  assert.equal(actionResponse.status, 200);
+
+  const hostPollResponse = await fetch(crewUrl(host), {
+    headers: { "x-crew-token": host.token },
+  });
+  assert.equal(hostPollResponse.status, 200);
+  const hostPoll = await hostPollResponse.json();
+  assert.equal(hostPoll.room.members.length, 2);
+  const remoteMember = hostPoll.room.members.find(
+    (member) => member.id === guest.memberId,
+  );
+  assert.equal(remoteMember.x, 8.5);
+  assert.equal(remoteMember.z, -3.25);
+  assert.equal(hostPoll.room.actions.length, 1);
+  assert.equal(hostPoll.room.actions[0].type, "magnet");
+
+  const acknowledgedState = {
+    ...state,
+    time: 179.5,
+    message: "Magnetic retrieval accepted.",
+  };
+  const acknowledgeResponse = await fetch(crewUrl(host), {
+    method: "PATCH",
+    headers: headersFor(host),
+    body: JSON.stringify({
+      presence: { x: -12, y: 0, z: 5, yaw: 0, inputMask: 0 },
+      authoritativeState: acknowledgedState,
+      ackActionId: hostPoll.room.actions[0].id,
+    }),
+  });
+  assert.equal(acknowledgeResponse.status, 200);
+
+  const guestPollResponse = await fetch(crewUrl(guest), {
+    headers: { "x-crew-token": guest.token },
+  });
+  assert.equal(guestPollResponse.status, 200);
+  const guestPoll = await guestPollResponse.json();
+  assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[0].id);
+  assert.equal(guestPoll.room.authoritativeState.message, "Magnetic retrieval accepted.");
+
+  const closeResponse = await fetch(crewUrl(host), {
+    method: "DELETE",
+    headers: { "x-crew-token": host.token },
+  });
+  assert.equal(closeResponse.status, 200);
+  const closedGuestResponse = await fetch(crewUrl(guest), {
+    headers: { "x-crew-token": guest.token },
+  });
+  assert.equal(closedGuestResponse.status, 200);
+  const closedGuest = await closedGuestResponse.json();
+  assert.equal(closedGuest.room.phase, "closed");
+
+  const guestLeaveResponse = await fetch(crewUrl(guest), {
+    method: "DELETE",
+    headers: { "x-crew-token": guest.token },
+  });
+  assert.equal(guestLeaveResponse.status, 200);
 });

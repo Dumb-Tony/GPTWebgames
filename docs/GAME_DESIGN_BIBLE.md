@@ -2317,6 +2317,26 @@ This plan is written so an AI coding assistant such as Claude can implement one 
   A regression test now locks the expected forward/right vectors at neutral and a
   ninety-degree right turn.
 
+**Prototype status — Build 024 salvage kit**
+
+- Expanded every Practice Moon seed from five to seven deposits by adding pressurized
+  Helium-3 Canisters and delicate Lunar Microfossils. Each sample has its own value,
+  carry-speed modifier, impact response, bounce profile, structural floor, silhouette,
+  emissive treatment, and procedural material pattern.
+- Added a magnetic retriever that launches nearby loose magnetic cargo toward its operator
+  with a 6.5-second recharge, plus two-charge sample stabilizer foam that restores condition
+  to damaged carried cargo. Solo, host, guest, keyboard, and standard-controller paths use
+  the same host-authoritative action model.
+- Added procedural regolith speckle/crater detail and sample-specific stripe or archival
+  patterns without external texture downloads, preserving the low-poly browser budget.
+- Reduced the Practice Moon from three pressure vents to two, moved both away from the
+  central extraction route, and lengthened their cycle from nine to 14.5 seconds so an
+  eruption reads as a special event instead of constant map clutter.
+- Added an isolated production-worker integration test that creates a host and guest,
+  launches a shared mission, synchronizes remote movement, relays and acknowledges a
+  magnetic-retriever action, distributes authoritative state, and verifies clean room
+  closure when the host leaves.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

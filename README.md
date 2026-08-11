@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 023: the first Vertical Slice Polish pass plus corrected home-base heading math, contextual first-shift guidance, end-to-end standard controller support, controller-driven menus, accessibility tuning, performance presets, and the walkable orbital operations hub introduced in Build 021.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 024: a Practice Moon salvage-kit and material-detail pass with new samples, multiplayer-safe utility tools, rarer pressure vents, automated two-player Crew Link coverage, and the Vertical Slice Polish work introduced in Builds 021–023.
 
 ## Playable build
 
@@ -11,7 +11,7 @@ The first prototype includes:
 - Third-person low-gravity movement and moon hopping
 - A limited EVA micro-thruster for extending jumps and correcting bad decisions
 - A real-time low-poly 3D moon, astronaut, landing ship, rover, drill, and cargo
-- Dynamic lighting, shadows, emissive equipment, starfield, fog, and lunar dust
+- Dynamic lighting, shadows, emissive equipment, starfield, fog, lunar dust, and procedural surface/material textures
 - Layered horizon ridges, meteor streaks, landing dust, and impact-responsive camera motion
 - Hidden deposits revealed by scanner pulses
 - Scanner telemetry for tracked contacts and nearest-signal distance
@@ -20,14 +20,15 @@ The first prototype includes:
 - Reproducible mission IDs with controlled cargo and deposit randomization
 - A late-mission meteor shower with readable impact warnings and physical blast force
 - Suit integrity, cargo-dropping knockdowns, and hold-to-reboot recovery
-- Light, fragile, and heavy cargo
+- Seven mission deposits spanning light, fragile, heavy, pressurized, archival, and magnetic cargo
+- Bouncy Helium-3 Canisters and delicate Lunar Microfossils with distinct silhouettes and handling
 - Cargo condition and value loss from reckless airborne or high-speed drops
 - Low-gravity cargo throwing with weight-sensitive arcs and landing damage
 - Material-specific bounce physics, structural ratings, and shattering cryogenic vials
 - Color-coded first-impact trajectory previews and ricochet bank-shot bonuses
 - A glowing ship cargo receiver that catches well-aimed airborne samples
 - Persistent look sensitivity, inverted-look, and effects-volume controls
-- Timed pressure vents with readable warnings, launch force, and cargo damage
+- Two rare timed pressure vents with readable warnings, launch force, and cargo damage
 - Physical pickup and transport
 - A ship cargo bay and extraction target
 - A three-minute departure window
@@ -38,6 +39,8 @@ The first prototype includes:
 - Host-authoritative scanning, drilling, cargo ownership, throwing, deposits, timer, and results
 - Crew roster, round-trip latency display, location pings, and clean host-disconnect recovery
 - A physics tether gun with a forgiving 16m lock range and predictable 19m cable break
+- An 18m magnetic retriever that yanks loose metal into dangerous low-gravity flight
+- Two-charge sample stabilizer foam that restores damaged carried cargo
 - Two-scientist team lift that makes dense Platinum Cores substantially easier to haul
 - Quick help, cargo, danger, and return-to-ship callouts that do not require voice chat
 - Live drilling, movement, boosting, and safe-mode status for every connected teammate
@@ -84,6 +87,8 @@ using the public build can review and add to the same development log.
 | Shift + E | Throw carried cargo (fragile samples may lose value on impact) |
 | P | Ping your position to the connected crew |
 | T | Tether or release nearby loose cargo |
+| G | Magnetic retriever for loose metal within 18m |
+| C | Use stabilizer foam on damaged carried cargo |
 | 1 / 2 / 3 / 4 | Call for help / mark cargo / mark danger / call return to ship |
 
 ### Standard controller
@@ -97,6 +102,8 @@ using the public build can review and add to the same development log.
 | Y / Triangle | Scanner pulse |
 | Right trigger | Drill |
 | Left bumper | Tether / release |
+| Left trigger | Magnetic retriever |
+| Right stick click | Stabilizer foam |
 | Right bumper | Throw carried cargo |
 | B / Circle | Repair jammed drill / back out of menus |
 | D-pad | Crew help, cargo, danger, and ship callouts |
@@ -128,7 +135,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 023 continues Milestone 9: Vertical Slice Polish and corrects the orbital hub's yaw-to-movement conversion so forward, reverse, and strafing remain camera-relative after turning. New players receive one contextual objective at a time from movement through scanning, drilling, cargo handling, quota completion, and extraction. Standard controllers operate the physical hub, moon mission, menus, and crew callouts. Control Tuning adds camera-impact reduction, HUD scaling, high-contrast instruments, mission-guide visibility, and three render-quality presets. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 024 continues Milestone 9: Vertical Slice Polish with procedural lunar and cargo material detail, Helium-3 Canisters, Lunar Microfossils, a magnetic retriever, and consumable sample stabilizer. The Practice Moon now has two vents instead of three and each erupts roughly every 14.5 seconds instead of every nine. Crew Link accepts the new tool intents through host authority, and the test suite now creates two real clients, launches a shared mission, synchronizes movement, relays a tool action, acknowledges authoritative state, and verifies host-disconnect recovery. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 
