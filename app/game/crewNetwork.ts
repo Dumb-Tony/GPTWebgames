@@ -23,6 +23,7 @@ export type CrewActionType =
   | "tether"
   | "magnet"
   | "stabilize"
+  | "cart_toggle"
   | "ping"
   | "ping_help"
   | "ping_cargo"
@@ -62,7 +63,14 @@ export type CrewAction = {
 
 export type CrewDepositState = {
   id: number;
-  state: "hidden" | "revealed" | "extracting" | "cargo" | "secured" | "broken";
+  state:
+    | "hidden"
+    | "revealed"
+    | "extracting"
+    | "cargo"
+    | "cart"
+    | "secured"
+    | "broken";
   progress: number;
   condition: number;
   position: [number, number, number];
@@ -80,6 +88,12 @@ export type CrewMissionState = {
   time: number;
   score: number;
   message: string;
+  cart: {
+    position: [number, number, number];
+    yaw: number;
+    ownerId: string | null;
+    cargoIds: number[];
+  };
   deposits: CrewDepositState[];
   stats: {
     repairsCompleted: number;

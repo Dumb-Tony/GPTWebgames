@@ -2337,6 +2337,18 @@ This plan is written so an AI coding assistant such as Claude can implement one 
   magnetic-retriever action, distributes authoritative state, and verifies clean room
   closure when the host leaves.
 
+**Prototype status — Build 025 bulk haul**
+
+- Replaced the static rover prop with an open-bed cargo cart that can be hitched or
+  released by keyboard and standard controller. The cart follows its assigned scientist,
+  animates its wheels, and applies a light movement penalty as its manifest fills.
+- Added four physical cargo slots. Any crew member can load a carried sample into an open
+  slot, allowing one player to tow while the rest of the crew extracts and loads.
+- Added bulk receiving at the lander: when the loaded cart is beside the receiver, one
+  interaction secures every sample and credits the sum of their condition-adjusted values.
+- Synchronized cart transform, hitch owner, cargo state, and slot manifest through the
+  existing host-authoritative Crew Link model, including a two-client cart-action test.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

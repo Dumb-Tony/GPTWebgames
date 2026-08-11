@@ -9,6 +9,7 @@ export const CARGO_RECEIVER_MAX_HEIGHT = 4.8;
 export const TETHER_LOCK_RANGE = 16;
 export const TETHER_BREAK_RANGE = 19;
 export const TETHER_MAX_OWNERS = 2;
+export const CART_CAPACITY = 4;
 
 export type ControlSettings = {
   lookSensitivity: number;
@@ -250,6 +251,24 @@ export function missionMaximumValue(definitions: readonly DepositDefinition[]) {
 export function calculateCargoValue(kind: CargoKind, condition: number) {
   const safeCondition = Math.min(1, Math.max(0, condition));
   return Math.round(cargoData[kind].value * safeCondition);
+}
+
+export function canLoadCargoCart(cargoCount: number) {
+  return Math.max(0, Math.trunc(cargoCount)) < CART_CAPACITY;
+}
+
+export function cargoCartTowMultiplier(cargoCount: number) {
+  const safeCount = Math.min(CART_CAPACITY, Math.max(0, Math.trunc(cargoCount)));
+  return Math.max(0.72, 1 - safeCount * 0.06);
+}
+
+export function cargoCartManifestValue(
+  cargo: ReadonlyArray<{ kind: CargoKind; condition: number }>,
+) {
+  return cargo.reduce(
+    (total, sample) => total + calculateCargoValue(sample.kind, sample.condition),
+    0,
+  );
 }
 
 export function calculateCargoImpactCondition(

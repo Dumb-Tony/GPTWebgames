@@ -2,16 +2,20 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   CONTRACT_TARGET,
+  CART_CAPACITY,
   DEFAULT_CONTROL_SETTINGS,
   TETHER_BREAK_RANGE,
   advanceSuitRecovery,
   applySuitDamage,
+  canLoadCargoCart,
   canAirmailCargo,
   calculateBankShotBonus,
   calculateCargoBounce,
   calculateCargoImpact,
   calculateCargoImpactCondition,
   calculateCargoValue,
+  cargoCartManifestValue,
+  cargoCartTowMultiplier,
   calculateTetherPull,
   createMissionDepositDefinitions,
   formatSignalBearing,
@@ -247,6 +251,23 @@ test("cargo payout respects condition and cannot exceed its base value", () => {
   assert.equal(calculateCargoValue("ferric", -1), 0);
 });
 
+test("cargo carts enforce four slots, load-aware towing, and a single manifest payout", () => {
+  assert.equal(CART_CAPACITY, 4);
+  assert.equal(canLoadCargoCart(3), true);
+  assert.equal(canLoadCargoCart(4), false);
+  assert.equal(canLoadCargoCart(99), false);
+  assert.equal(cargoCartTowMultiplier(0), 1);
+  assert.equal(cargoCartTowMultiplier(4), 0.76);
+  assert.equal(cargoCartTowMultiplier(99), 0.76);
+  assert.equal(
+    cargoCartManifestValue([
+      { kind: "helium", condition: 1 },
+      { kind: "glass", condition: 0.5 },
+    ]),
+    670,
+  );
+});
+
 test("low-gravity throws punish fragile cargo more than dense cargo", () => {
   assert.equal(calculateCargoImpactCondition("glass", 1, 3), 1);
   assert.ok(calculateCargoImpactCondition("glass", 1, 7) < 0.83);
@@ -365,6 +386,7 @@ test("standard controllers apply deadzones and expose the complete field control
   buttons[5] = { pressed: true, value: 1 };
   buttons[6] = { pressed: true, value: 1 };
   buttons[7] = { pressed: false, value: 0.8 };
+  buttons[10] = { pressed: true, value: 1 };
   buttons[11] = { pressed: true, value: 1 };
   buttons[13] = { pressed: true, value: 1 };
   const input = readStandardGamepad({
@@ -384,6 +406,7 @@ test("standard controllers apply deadzones and expose the complete field control
   assert.equal(input.tether, true);
   assert.equal(input.magnet, true);
   assert.equal(input.stabilize, true);
+  assert.equal(input.cartToggle, true);
   assert.equal(input.throwCargo, true);
   assert.equal(input.pingDanger, true);
 });

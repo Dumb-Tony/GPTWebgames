@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 024: a Practice Moon salvage-kit and material-detail pass with new samples, multiplayer-safe utility tools, rarer pressure vents, automated two-player Crew Link coverage, and the Vertical Slice Polish work introduced in Builds 021–023.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 025: a bulk-haul logistics pass with a towable four-slot cargo cart, shared-crew loading, and one-action manifest delivery, building on the Practice Moon salvage kit and Vertical Slice Polish work introduced in Builds 021–024.
 
 ## Playable build
 
@@ -30,6 +30,8 @@ The first prototype includes:
 - Persistent look sensitivity, inverted-look, and effects-volume controls
 - Two rare timed pressure vents with readable warnings, launch force, and cargo damage
 - Physical pickup and transport
+- A towable four-slot cargo cart that slows modestly as its shared manifest fills
+- Cooperative cart loading and one-action bulk deposit at the ship receiver
 - A ship cargo bay and extraction target
 - A three-minute departure window
 - Success, failure, debrief, and immediate restart
@@ -87,6 +89,7 @@ using the public build can review and add to the same development log.
 | Shift + E | Throw carried cargo (fragile samples may lose value on impact) |
 | P | Ping your position to the connected crew |
 | T | Tether or release nearby loose cargo |
+| H | Hitch or release the nearby cargo cart |
 | G | Magnetic retriever for loose metal within 18m |
 | C | Use stabilizer foam on damaged carried cargo |
 | 1 / 2 / 3 / 4 | Call for help / mark cargo / mark danger / call return to ship |
@@ -102,6 +105,7 @@ using the public build can review and add to the same development log.
 | Y / Triangle | Scanner pulse |
 | Right trigger | Drill |
 | Left bumper | Tether / release |
+| Left stick click | Hitch / release cargo cart |
 | Left trigger | Magnetic retriever |
 | Right stick click | Stabilizer foam |
 | Right bumper | Throw carried cargo |
@@ -135,7 +139,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 024 continues Milestone 9: Vertical Slice Polish with procedural lunar and cargo material detail, Helium-3 Canisters, Lunar Microfossils, a magnetic retriever, and consumable sample stabilizer. The Practice Moon now has two vents instead of three and each erupts roughly every 14.5 seconds instead of every nine. Crew Link accepts the new tool intents through host authority, and the test suite now creates two real clients, launches a shared mission, synchronizes movement, relays a tool action, acknowledges authoritative state, and verifies host-disconnect recovery. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 025 continues Milestone 9: Vertical Slice Polish by replacing the static rover prop with a host-authoritative four-slot cargo cart. A player can hitch it with H or left-stick click, teammates can load extracted samples with E/X, and the complete manifest can be deposited at the ship receiver in one action. Cart position, ownership, cargo slots, and bulk delivery synchronize through Crew Link, with the real two-client integration test now relaying and acknowledging a cart hitch. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 

@@ -21,6 +21,7 @@ export type StandardGamepadInput = {
   tether: boolean;
   magnet: boolean;
   stabilize: boolean;
+  cartToggle: boolean;
   throwCargo: boolean;
   menu: boolean;
   pingHelp: boolean;
@@ -43,6 +44,7 @@ export const EMPTY_GAMEPAD_INPUT: StandardGamepadInput = {
   tether: false,
   magnet: false,
   stabilize: false,
+  cartToggle: false,
   throwCargo: false,
   menu: false,
   pingHelp: false,
@@ -80,6 +82,7 @@ export function readStandardGamepad(
     tether: pressed(gamepad, 4),
     magnet: pressed(gamepad, 6),
     stabilize: pressed(gamepad, 11),
+    cartToggle: pressed(gamepad, 10),
     throwCargo: pressed(gamepad, 5),
     drill: pressed(gamepad, 7),
     menu: pressed(gamepad, 9),

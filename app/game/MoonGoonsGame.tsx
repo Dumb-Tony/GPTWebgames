@@ -28,6 +28,7 @@ import {
 import {
   DEFAULT_CONTROL_SETTINGS,
   DRILL_JAM_WEAR,
+  CART_CAPACITY,
   MISSION_SECONDS,
   TETHER_BREAK_RANGE,
   TETHER_LOCK_RANGE,
@@ -35,10 +36,13 @@ import {
   advanceSuitRecovery,
   applySuitDamage as calculateSuitDamage,
   canAirmailCargo,
+  canLoadCargoCart,
   calculateBankShotBonus,
   calculateCargoBounce,
   calculateCargoImpact,
   calculateCargoValue,
+  cargoCartManifestValue,
+  cargoCartTowMultiplier,
   calculateTetherPull,
   cargoData,
   createMissionDepositDefinitions,
@@ -95,6 +99,7 @@ type DepositState =
   | "revealed"
   | "extracting"
   | "cargo"
+  | "cart"
   | "secured"
   | "broken";
 type MeteorState = "idle" | "warning" | "falling" | "impact";
@@ -160,6 +165,10 @@ type Snapshot = {
   scanCooldown: number;
   magnetCooldown: number;
   stabilizerCharges: number;
+  cartCargoCount: number;
+  cartCapacity: number;
+  cartHitched: boolean;
+  cartDistance: number;
   depositsSecured: number;
   prompt: string;
   homeDistance: number;
@@ -511,20 +520,65 @@ function createCargoReceiver() {
 
 function createRover() {
   const rover = new THREE.Group();
-  rover.position.set(2, 0.3, 8);
-  rover.rotation.y = -0.4;
-  rover.rotation.z = -0.08;
-  rover.add(box([4.4, 1.4, 2.6], 0xd6d1b8, [0, 1.35, 0]));
-  rover.add(box([4.5, 0.55, 2.72], palette.yellow, [0, 1.05, 0]));
-  rover.add(box([2.1, 0.75, 1.95], 0x183040, [-0.45, 2.15, 0]));
+  rover.position.set(-7.5, 0.3, 7.2);
+  rover.rotation.y = -0.18;
+
+  const chassis = box([4.25, 0.48, 2.65], 0xd6d1b8, [0, 0.9, 0], {
+    metalness: 0.3,
+    roughness: 0.58,
+  });
+  rover.add(chassis);
+  rover.add(box([4.4, 0.2, 2.72], palette.yellow, [0, 1.18, 0], {
+    metalness: 0.35,
+    roughness: 0.42,
+  }));
+
+  const cargoBed = new THREE.Group();
+  cargoBed.position.y = 1.32;
+  cargoBed.add(box([4.05, 0.16, 2.38], palette.graphite, [0, 0, 0]));
+  cargoBed.add(box([0.16, 1.05, 2.38], 0xe4dec5, [-2.02, 0.48, 0]));
+  cargoBed.add(box([0.16, 1.05, 2.38], 0xe4dec5, [2.02, 0.48, 0]));
+  cargoBed.add(box([4.05, 1.05, 0.16], 0xe4dec5, [0, 0.48, 1.12]));
+  cargoBed.add(box([4.05, 0.32, 0.12], palette.yellow, [0, 0.12, -1.12]));
+  rover.add(cargoBed);
+
+  const wheels: THREE.Mesh[] = [];
   [-1.45, 1.45].forEach((x) => {
     [-1.25, 1.25].forEach((z) => {
-      const wheel = cylinder(0.58, 0.58, 0.45, 0x151824, [x, 0.55, z], 10);
+      const wheel = cylinder(0.62, 0.62, 0.48, 0x151824, [x, 0.5, z], 12, {
+        roughness: 0.92,
+      });
       wheel.rotation.x = Math.PI / 2;
       rover.add(wheel);
+      wheels.push(wheel);
     });
   });
-  const mast = cylinder(0.08, 0.1, 2.3, 0x9c9b8e, [1.3, 3.2, 0], 8);
+
+  const leftTowBar = cylinder(0.075, 0.1, 2.8, 0xb5b39f, [-0.7, 0.92, -2.28], 8, {
+    metalness: 0.65,
+    roughness: 0.32,
+  });
+  leftTowBar.rotation.x = Math.PI / 2.5;
+  leftTowBar.rotation.z = -0.19;
+  rover.add(leftTowBar);
+  const rightTowBar = leftTowBar.clone();
+  rightTowBar.position.x = 0.7;
+  rightTowBar.rotation.z = 0.19;
+  rover.add(rightTowBar);
+  const hitch = new THREE.Mesh(
+    new THREE.TorusGeometry(0.3, 0.08, 8, 18),
+    standardMaterial(palette.yellow, {
+      emissive: 0x6b5314,
+      emissiveIntensity: 0.75,
+      metalness: 0.62,
+      roughness: 0.34,
+    }),
+  );
+  hitch.position.set(0, 0.82, -3.45);
+  hitch.rotation.x = Math.PI / 2;
+  rover.add(hitch);
+
+  const mast = cylinder(0.07, 0.1, 1.35, 0x9c9b8e, [1.72, 2.18, 0.82], 8);
   rover.add(mast);
   const light = new THREE.Mesh(
     new THREE.BoxGeometry(0.46, 0.35, 0.35),
@@ -533,8 +587,12 @@ function createRover() {
       emissiveIntensity: 2.5,
     }),
   );
-  light.position.set(1.3, 4.3, 0);
+  light.position.set(1.72, 2.86, 0.82);
   rover.add(light);
+  rover.userData.cargoBed = cargoBed;
+  rover.userData.wheels = wheels;
+  rover.userData.hitch = hitch;
+  rover.userData.lastPosition = rover.position.clone();
   return rover;
 }
 
@@ -1388,6 +1446,10 @@ export function MoonGoonsGame() {
     scanCooldown: 0,
     magnetCooldown: 0,
     stabilizerCharges: 2,
+    cartCargoCount: 0,
+    cartCapacity: CART_CAPACITY,
+    cartHitched: false,
+    cartDistance: 10,
     depositsSecured: 0,
     prompt: "Q · SCAN FOR VALUABLE MATERIAL",
     homeDistance: 7,
@@ -1832,6 +1894,27 @@ export function MoonGoonsGame() {
       }
     >();
     const tetherLines = new Map<string, THREE.Line>();
+    const cartTowLine = new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(),
+        new THREE.Vector3(),
+      ]),
+      new THREE.LineBasicMaterial({
+        color: palette.yellow,
+        transparent: true,
+        opacity: 0.82,
+      }),
+    );
+    cartTowLine.visible = false;
+    scene.add(cartTowLine);
+    let cartOwnerId: string | null = null;
+    let cartCargoIds: number[] = [];
+    const cartSlots: Array<[number, number, number]> = [
+      [-1.08, 0.76, -0.54],
+      [1.08, 0.76, -0.54],
+      [-1.08, 0.76, 0.58],
+      [1.08, 0.76, 0.58],
+    ];
 
     let deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
       (definition) => createDeposit(definition),
@@ -1953,6 +2036,7 @@ export function MoonGoonsGame() {
     let padTetherLatch = false;
     let padMagnetLatch = false;
     let padStabilizerLatch = false;
+    let padCartLatch = false;
     let padMenuLatch = false;
     let padPingLatch = false;
     let lastPadConnected = false;
@@ -2209,6 +2293,14 @@ export function MoonGoonsGame() {
         meteor.meteor.visible = false;
         meteor.light.intensity = 0;
       });
+      cartOwnerId = null;
+      cartCargoIds = [];
+      world.rover.position.set(-7.5, 0.3, 7.2);
+      world.rover.rotation.set(0, -0.18, 0);
+      (world.rover.userData.lastPosition as THREE.Vector3).copy(
+        world.rover.position,
+      );
+      cartTowLine.visible = false;
       resetDeposits();
     };
 
@@ -2274,6 +2366,19 @@ export function MoonGoonsGame() {
           messageRef.current = "Tether request sent to mission lead authority.";
         } else {
           toggleTether(
+            session?.memberId ?? "solo",
+            session?.name ?? "SOLO GOON",
+            astronaut.position,
+          );
+        }
+      }
+      if (event.code === "KeyH" && !event.repeat && phaseRef.current === "active") {
+        const session = crewSessionRef.current;
+        if (session?.role === "guest") {
+          queueCrewAction("cart_toggle");
+          messageRef.current = "Cargo cart hitch request sent to mission lead authority.";
+        } else {
+          toggleCargoCart(
             session?.memberId ?? "solo",
             session?.name ?? "SOLO GOON",
             astronaut.position,
@@ -2410,10 +2515,192 @@ export function MoonGoonsGame() {
         deposit.state === "revealed" || deposit.state === "extracting";
       deposit.group.visible = deposit.state !== "hidden" && deposit.state !== "secured";
       deposit.shell.visible = embedded;
-      deposit.core.visible = deposit.state === "cargo";
+      deposit.core.visible = deposit.state === "cargo" || deposit.state === "cart";
       deposit.shards.visible = deposit.state === "broken";
-      deposit.ring.visible = deposit.state !== "broken";
+      deposit.ring.visible = deposit.state !== "broken" && deposit.state !== "cart";
       deposit.beacon.intensity = embedded ? 7 : deposit.state === "cargo" ? 9 : 0;
+    };
+
+    const placeCargoInCart = (deposit: DepositRuntime, slotIndex: number) => {
+      const cargoBed = world.rover.userData.cargoBed as THREE.Group;
+      const slot = cartSlots[slotIndex];
+      if (!slot) return;
+      if (deposit.group.parent !== cargoBed) cargoBed.add(deposit.group);
+      deposit.group.position.set(...slot);
+      deposit.group.rotation.set(0.08 * (slotIndex % 2 ? -1 : 1), slotIndex * 0.42, 0.06);
+      deposit.group.scale.setScalar(deposit.kind === "platinum" ? 0.52 : 0.46);
+      setDepositVisualState(deposit);
+    };
+
+    const cartOwnerTransform = (ownerId: string) => {
+      const session = crewSessionRef.current;
+      const localOwnerId = session?.memberId ?? "solo";
+      if (ownerId === localOwnerId) {
+        return { position: astronaut.position.clone(), yaw: astronaut.rotation.y };
+      }
+      const member = crewRoomRef.current?.members.find(
+        (candidate) => candidate.id === ownerId,
+      );
+      return member
+        ? { position: new THREE.Vector3(member.x, member.y, member.z), yaw: member.yaw }
+        : null;
+    };
+
+    const toggleCargoCart = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      if (cartOwnerId === ownerId) {
+        cartOwnerId = null;
+        messageRef.current = `${ownerName} released the cargo cart. Parking brake confidence: moderate.`;
+        sound("pickup");
+        return true;
+      }
+      if (cartOwnerId) {
+        const currentOwner = crewRoomRef.current?.members.find(
+          (member) => member.id === cartOwnerId,
+        )?.name;
+        messageRef.current = `Cargo cart already hitched to ${currentOwner ?? "ANOTHER GOON"}.`;
+        return false;
+      }
+      if (world.rover.position.distanceTo(ownerPosition) > 4.5) {
+        messageRef.current = `${ownerName} is too far from the cargo cart to negotiate a hitch.`;
+        return false;
+      }
+      cartOwnerId = ownerId;
+      messageRef.current = `${ownerName} hitched the cargo cart // ${cartCargoIds.length}/${CART_CAPACITY} slots occupied.`;
+      sound("pickup");
+      return true;
+    };
+
+    const loadCargoIntoCart = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      const held = deposits.find((deposit) => deposit.ownerId === ownerId);
+      if (!held || world.rover.position.distanceTo(ownerPosition) > 4.5) return false;
+      if (!canLoadCargoCart(cartCargoIds.length)) {
+        messageRef.current = `Cargo cart full // ${CART_CAPACITY}/${CART_CAPACITY}. Procurement recommends finally going home.`;
+        sound("warning");
+        return false;
+      }
+      held.state = "cart";
+      held.ownerId = null;
+      held.tetherOwnerIds = [];
+      held.velocity.set(0, 0, 0);
+      held.isBallistic = false;
+      held.bounceCount = 0;
+      cartCargoIds.push(held.id);
+      placeCargoInCart(held, cartCargoIds.length - 1);
+      if (ownerId === (crewSessionRef.current?.memberId ?? "solo")) {
+        carryingRef.current = null;
+      }
+      messageRef.current = `${ownerName} loaded ${cargoData[held.kind].name} // cart ${cartCargoIds.length}/${CART_CAPACITY}.`;
+      sound("pickup");
+      return true;
+    };
+
+    const depositCargoCart = (ownerName: string, ownerPosition: THREE.Vector3) => {
+      if (
+        cartCargoIds.length === 0 ||
+        world.rover.position.distanceTo(CARGO_RECEIVER_POSITION) > 4.8 ||
+        ownerPosition.distanceTo(CARGO_RECEIVER_POSITION) > 5.8
+      ) {
+        return false;
+      }
+      const manifest = cartCargoIds
+        .map((id) => deposits.find((deposit) => deposit.id === id))
+        .filter((deposit): deposit is DepositRuntime => Boolean(deposit));
+      const earned = cargoCartManifestValue(
+        manifest.map((deposit) => ({
+          kind: deposit.kind,
+          condition: deposit.condition,
+        })),
+      );
+      manifest.forEach((deposit) => {
+        if (deposit.group.parent !== scene) scene.attach(deposit.group);
+        deposit.state = "secured";
+        deposit.ownerId = null;
+        deposit.tetherOwnerIds = [];
+        deposit.velocity.set(0, 0, 0);
+        deposit.isBallistic = false;
+        deposit.group.visible = false;
+      });
+      const sampleCount = manifest.length;
+      cartCargoIds = [];
+      scoreRef.current += earned;
+      airmailFlash = 1;
+      messageRef.current = `${ownerName} submitted a ${sampleCount}-sample cart manifest for ¢${earned}. Bulk science achieved.`;
+      sound("secure");
+      return true;
+    };
+
+    const updateCargoCart = (dt: number, hasAuthority: boolean) => {
+      let owner = cartOwnerId ? cartOwnerTransform(cartOwnerId) : null;
+      if (hasAuthority && cartOwnerId && !owner) {
+        cartOwnerId = null;
+        owner = null;
+        messageRef.current =
+          "Cargo cart auto-released after losing its assigned goon. The brake may even work.";
+      }
+
+      if (hasAuthority && owner) {
+        const targetPosition = owner.position
+          .clone()
+          .add(
+            new THREE.Vector3(0, 0, 3.65).applyAxisAngle(
+              new THREE.Vector3(0, 1, 0),
+              owner.yaw,
+            ),
+          );
+        targetPosition.y = 0.3;
+        const targetRadius = Math.hypot(targetPosition.x, targetPosition.z);
+        if (targetRadius > MOON_RADIUS - 2.7) {
+          targetPosition.x *= (MOON_RADIUS - 2.7) / targetRadius;
+          targetPosition.z *= (MOON_RADIUS - 2.7) / targetRadius;
+        }
+        if (world.rover.position.distanceTo(targetPosition) > 12) {
+          world.rover.position.copy(targetPosition);
+        } else {
+          world.rover.position.x = THREE.MathUtils.damp(
+            world.rover.position.x,
+            targetPosition.x,
+            5.8,
+            dt,
+          );
+          world.rover.position.z = THREE.MathUtils.damp(
+            world.rover.position.z,
+            targetPosition.z,
+            5.8,
+            dt,
+          );
+        }
+        const yawDelta = Math.atan2(
+          Math.sin(owner.yaw - world.rover.rotation.y),
+          Math.cos(owner.yaw - world.rover.rotation.y),
+        );
+        world.rover.rotation.y += yawDelta * (1 - Math.exp(-7.5 * dt));
+      }
+
+      const previousCartPosition = world.rover.userData.lastPosition as THREE.Vector3;
+      const cartTravel = previousCartPosition.distanceTo(world.rover.position);
+      if (cartTravel > 0.001) {
+        (world.rover.userData.wheels as THREE.Mesh[]).forEach((wheel) => {
+          wheel.rotation.x -= cartTravel / 0.42;
+        });
+        previousCartPosition.copy(world.rover.position);
+      }
+
+      cartTowLine.visible = phaseRef.current === "active" && Boolean(owner);
+      if (owner) {
+        const hitchPosition = (
+          world.rover.userData.hitch as THREE.Object3D
+        ).getWorldPosition(new THREE.Vector3());
+        const ownerAnchor = owner.position.clone().add(new THREE.Vector3(0, 1.15, 0));
+        cartTowLine.geometry.setFromPoints([ownerAnchor, hitchPosition]);
+      }
     };
 
     const applyAuthoritativeState = (state: CrewMissionState) => {
@@ -2430,6 +2717,15 @@ export function MoonGoonsGame() {
       stuntBonusRef.current = state.stats.stuntBonus;
       cargoBouncesRef.current = state.stats.cargoBounces;
       brokenSamplesRef.current = state.stats.brokenSamples;
+
+      if (state.cart) {
+        cartOwnerId = state.cart.ownerId;
+        cartCargoIds = state.cart.cargoIds.filter((id) =>
+          state.deposits.some((deposit) => deposit.id === id && deposit.state === "cart"),
+        );
+        world.rover.position.fromArray(state.cart.position);
+        world.rover.rotation.y = state.cart.yaw;
+      }
 
       const localMemberId = crewSessionRef.current?.memberId ?? null;
       carryingRef.current = null;
@@ -2449,6 +2745,10 @@ export function MoonGoonsGame() {
         deposit.tetherOwnerIds = incoming.tetherOwnerIds ?? [];
         setDepositVisualState(deposit);
         if (incoming.ownerId === localMemberId) carryingRef.current = incoming.id;
+      });
+      cartCargoIds.forEach((id, slotIndex) => {
+        const deposit = deposits.find((candidate) => candidate.id === id);
+        if (deposit) placeCargoInCart(deposit, slotIndex);
       });
     };
 
@@ -2513,6 +2813,11 @@ export function MoonGoonsGame() {
           return;
         }
 
+        if (action.type === "cart_toggle") {
+          toggleCargoCart(member.id, member.name, memberPosition);
+          return;
+        }
+
         const held = deposits.find((deposit) => deposit.ownerId === member.id);
         if (held) {
           if (
@@ -2530,6 +2835,13 @@ export function MoonGoonsGame() {
             messageRef.current = `${member.name} secured ${cargoData[held.kind].name} for ¢${earned}.`;
             airmailFlash = 1;
             sound("secure");
+            return;
+          }
+
+          if (
+            action.type === "interact" &&
+            loadCargoIntoCart(member.id, member.name, memberPosition)
+          ) {
             return;
           }
 
@@ -2556,6 +2868,13 @@ export function MoonGoonsGame() {
             held.bounceCount = 0;
             messageRef.current = `${member.name} placed ${cargoData[held.kind].name}. Suspiciously careful.`;
           }
+          return;
+        }
+
+        if (
+          action.type === "interact" &&
+          depositCargoCart(member.name, memberPosition)
+        ) {
           return;
         }
 
@@ -2739,6 +3058,22 @@ export function MoonGoonsGame() {
         }
       }
       padTetherLatch = pad.tether;
+
+      if (pad.cartToggle && !padCartLatch && gameplayInputEnabled) {
+        const activeSession = crewSessionRef.current;
+        if (activeSession?.role === "guest") {
+          queueCrewAction("cart_toggle");
+          messageRef.current =
+            "Cargo cart hitch request sent to mission lead authority.";
+        } else {
+          toggleCargoCart(
+            activeSession?.memberId ?? "solo",
+            activeSession?.name ?? "SOLO GOON",
+            astronaut.position,
+          );
+        }
+      }
+      padCartLatch = pad.cartToggle;
 
       if (pad.magnet && !padMagnetLatch && gameplayInputEnabled) {
         const activeSession = crewSessionRef.current;
@@ -3089,10 +3424,15 @@ export function MoonGoonsGame() {
         });
         const incapacitated = downedRef.current;
         const cargoSpeed = carried ? cargoData[carried.kind].speed : 1;
-        const speedFactor =
+        const carriedSpeedFactor =
           carried && hasEquippedUpgrade(progressionRef.current, "cargo_harness")
             ? 1 - (1 - cargoSpeed) * 0.55
             : cargoSpeed;
+        const cartSpeedFactor =
+          cartOwnerId === (session?.memberId ?? "solo")
+            ? cargoCartTowMultiplier(cartCargoIds.length)
+            : 1;
+        const speedFactor = carriedSpeedFactor * cartSpeedFactor;
         const keyboardDrive =
           (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
           (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
@@ -3201,6 +3541,7 @@ export function MoonGoonsGame() {
           astronaut.position.z *= (MOON_RADIUS - 2) / radius;
         }
         astronaut.position.y = playerHeight;
+        updateCargoCart(dt, hasAuthority);
 
         const thrusterFlames = astronaut.userData.thrusterFlames as THREE.Mesh[];
         const thrusterGlow = astronaut.userData.thrusterGlow as THREE.PointLight;
@@ -3735,6 +4076,15 @@ export function MoonGoonsGame() {
                 scene.attach(held.group);
                 messageRef.current = `${cargoData[held.kind].name} secured for ¢${earned}. S.P.A.C.E. owns it now.`;
                 sound("secure");
+              } else if (
+                !throwInput &&
+                loadCargoIntoCart(
+                  session?.memberId ?? "solo",
+                  session?.name ?? "SOLO GOON",
+                  astronaut.position,
+                )
+              ) {
+                // The loader owns the state transition and cart attachment.
               } else {
                 const throwing = throwInput;
                 const roughDrop = !throwing && (playerHeight > 0.3 || velocity.length() > 4);
@@ -3796,6 +4146,13 @@ export function MoonGoonsGame() {
                   b.position.distanceTo(astronaut.position),
               )[0];
             if (
+              depositCargoCart(
+                session?.name ?? "SOLO GOON",
+                astronaut.position,
+              )
+            ) {
+              // Bulk handoff completes before loose-cargo pickup checks.
+            } else if (
               nearbyCargo &&
               nearbyCargo.position.distanceTo(astronaut.position) < 3.2
             ) {
@@ -4043,6 +4400,10 @@ export function MoonGoonsGame() {
           : null;
         const homeDistance = astronaut.position.distanceTo(SHIP_POSITION);
         const receiverDistance = astronaut.position.distanceTo(CARGO_RECEIVER_POSITION);
+        const cartDistance = astronaut.position.distanceTo(world.rover.position);
+        const cartReceiverDistance = world.rover.position.distanceTo(
+          CARGO_RECEIVER_POSITION,
+        );
         const nearbyCargo = deposits
           .filter(
             (deposit) =>
@@ -4082,6 +4443,7 @@ export function MoonGoonsGame() {
             deposit.state !== "hidden" &&
             deposit.state !== "secured" &&
             deposit.state !== "broken" &&
+            deposit.state !== "cart" &&
             deposit.id !== carryingRef.current,
         );
         const nearestTracked = trackedSignals
@@ -4125,7 +4487,11 @@ export function MoonGoonsGame() {
           prompt =
             receiverDistance < 3.8
               ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
-              : currentThrowPrediction
+              : cartDistance < 4.5 && canLoadCargoCart(cartCargoIds.length)
+                ? `E · LOAD ${cargoData[
+                    held.kind
+                  ].name.toUpperCase()} // CART ${cartCargoIds.length}/${CART_CAPACITY}`
+                : currentThrowPrediction
                 ? `E DROP · SHIFT+E THROW · ${currentThrowPrediction.risk} @ ${Math.round(
                     currentThrowPrediction.horizontalDistance,
                   )}m · BAY ${Math.round(receiverDistance)}m`
@@ -4133,6 +4499,14 @@ export function MoonGoonsGame() {
           if (held.condition < 0.995 && stabilizerChargesRef.current > 0) {
             prompt += ` · C FOAM ${Math.round(held.condition * 100)}%`;
           }
+        } else if (
+          cartCargoIds.length > 0 &&
+          cartReceiverDistance < 4.8 &&
+          receiverDistance < 5.8
+        ) {
+          prompt = `E · DEPOSIT CART // ${cartCargoIds.length} SAMPLE${
+            cartCargoIds.length === 1 ? "" : "S"
+          }`;
         } else if (
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
@@ -4148,6 +4522,13 @@ export function MoonGoonsGame() {
           prompt = `G · MAG-YANK ${cargoData[magneticCargo.kind].name.toUpperCase()} · ${Math.round(
             magneticCargo.position.distanceTo(astronaut.position),
           )}m`;
+        } else if (cartDistance < 4.5) {
+          prompt =
+            cartOwnerId === hudOwnerId
+              ? `H · RELEASE CART // ${cartCargoIds.length}/${CART_CAPACITY}`
+              : cartOwnerId
+                ? `CART IN USE // ${cartCargoIds.length}/${CART_CAPACITY}`
+                : `H · HITCH CART // ${cartCargoIds.length}/${CART_CAPACITY}`;
         } else if (
           nearbySignal &&
           nearbySignal.position.distanceTo(astronaut.position) < 3
@@ -4227,6 +4608,12 @@ export function MoonGoonsGame() {
             time: timeRef.current,
             score: scoreRef.current,
             message: messageRef.current,
+            cart: {
+              position: world.rover.position.toArray() as [number, number, number],
+              yaw: world.rover.rotation.y,
+              ownerId: cartOwnerId,
+              cargoIds: [...cartCargoIds],
+            },
             deposits: deposits.map((deposit) => {
               const worldPosition = deposit.group.getWorldPosition(new THREE.Vector3());
               return {
@@ -4284,6 +4671,10 @@ export function MoonGoonsGame() {
           scanCooldown: scanCooldownRef.current,
           magnetCooldown: magnetCooldownRef.current,
           stabilizerCharges: stabilizerChargesRef.current,
+          cartCargoCount: cartCargoIds.length,
+          cartCapacity: CART_CAPACITY,
+          cartHitched: cartOwnerId === hudOwnerId,
+          cartDistance,
           depositsSecured: deposits.filter((deposit) => deposit.state === "secured").length,
           prompt,
           homeDistance,
@@ -4436,6 +4827,10 @@ export function MoonGoonsGame() {
       scanCooldown: 0,
       magnetCooldown: 0,
       stabilizerCharges: 2,
+      cartCargoCount: 0,
+      cartCapacity: CART_CAPACITY,
+      cartHitched: false,
+      cartDistance: 10,
       depositsSecured: 0,
       prompt: "Q · SCAN FOR VALUABLE MATERIAL",
       homeDistance: 7,
@@ -4492,7 +4887,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 024 // SALVAGE KIT</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 025 // BULK HAUL</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -4606,6 +5001,11 @@ export function MoonGoonsGame() {
               <span>
                 {snapshot.cargoBounces} bounces · {snapshot.brokenSamples} broken · ¢
                 {snapshot.stuntBonus} bonus
+              </span>
+              <span>
+                CART {snapshot.cartCargoCount}/{snapshot.cartCapacity} · {snapshot.cartHitched
+                  ? "HITCHED"
+                  : `${Math.round(snapshot.cartDistance)}m`}
               </span>
               <span>
                 {snapshot.carrying
@@ -4736,6 +5136,16 @@ export function MoonGoonsGame() {
               <span>STABILIZER C</span>
               <strong>{snapshot.stabilizerCharges} FOAM CHARGES</strong>
             </div>
+            <div className={styles.utilityToolStatus}>
+              <span>CARGO CART H</span>
+              <strong>
+                {snapshot.cartHitched
+                  ? `HITCHED · ${snapshot.cartCargoCount}/${snapshot.cartCapacity}`
+                  : `${snapshot.cartCargoCount}/${snapshot.cartCapacity} · ${Math.round(
+                      snapshot.cartDistance,
+                    )}m`}
+              </strong>
+            </div>
             <div className={styles.fuelLabel}>
               <span>EVA THRUSTER</span>
               <strong>
@@ -4761,6 +5171,7 @@ export function MoonGoonsGame() {
               <span><kbd>Y</kbd> SCAN</span>
               <span><kbd>RT</kbd> DRILL</span>
               <span><kbd>LB</kbd> TETHER</span>
+              <span><kbd>LS</kbd> CART</span>
               <span><kbd>LT</kbd> MAGNET</span>
               <span><kbd>RS</kbd> FOAM</span>
               <span><kbd>RB</kbd> THROW</span>
@@ -4803,6 +5214,10 @@ export function MoonGoonsGame() {
             <div>
               <kbd>T</kbd>
               <span>TETHER / RELEASE</span>
+            </div>
+            <div>
+              <kbd>H</kbd>
+              <span>HITCH / RELEASE CART</span>
             </div>
             <div>
               <kbd>G</kbd>

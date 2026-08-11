@@ -193,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 024/);
+  assert.match(html, /BUILD 025/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -237,7 +237,7 @@ test("crew endpoint validates an empty call sign without touching storage", asyn
   assert.equal(payload.error, "Use a call sign with at least two characters.");
 });
 
-test("Crew Link supports a two-player room, authoritative launch, tool action, and clean shutdown", async () => {
+test("Crew Link supports a two-player room, authoritative launch, cart action, and clean shutdown", async () => {
   const createResponse = await fetch(new URL("/api/crew", baseUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -253,7 +253,7 @@ test("Crew Link supports a two-player room, authoritative launch, tool action, a
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       action: "join",
-      name: "MAGNET INTERN",
+      name: "CART INTERN",
       roomCode: host.roomCode,
     }),
   });
@@ -280,6 +280,12 @@ test("Crew Link supports a two-player room, authoritative launch, tool action, a
     time: 180,
     score: 0,
     message: "Crew contract live.",
+    cart: {
+      position: [-7.5, 0.3, 7.2],
+      yaw: -0.18,
+      ownerId: null,
+      cargoIds: [],
+    },
     deposits: [],
     stats: {
       repairsCompleted: 0,
@@ -310,7 +316,7 @@ test("Crew Link supports a two-player room, authoritative launch, tool action, a
     headers: headersFor(guest),
     body: JSON.stringify({
       presence: { x: 8.5, y: 0, z: -3.25, yaw: 0.7, inputMask: 2 },
-      action: { sequence: 1, type: "magnet" },
+      action: { sequence: 1, type: "cart_toggle" },
     }),
   });
   assert.equal(actionResponse.status, 200);
@@ -327,12 +333,16 @@ test("Crew Link supports a two-player room, authoritative launch, tool action, a
   assert.equal(remoteMember.x, 8.5);
   assert.equal(remoteMember.z, -3.25);
   assert.equal(hostPoll.room.actions.length, 1);
-  assert.equal(hostPoll.room.actions[0].type, "magnet");
+  assert.equal(hostPoll.room.actions[0].type, "cart_toggle");
 
   const acknowledgedState = {
     ...state,
     time: 179.5,
-    message: "Magnetic retrieval accepted.",
+    message: "Cargo cart hitch accepted.",
+    cart: {
+      ...state.cart,
+      ownerId: guest.memberId,
+    },
   };
   const acknowledgeResponse = await fetch(crewUrl(host), {
     method: "PATCH",
@@ -351,7 +361,8 @@ test("Crew Link supports a two-player room, authoritative launch, tool action, a
   assert.equal(guestPollResponse.status, 200);
   const guestPoll = await guestPollResponse.json();
   assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[0].id);
-  assert.equal(guestPoll.room.authoritativeState.message, "Magnetic retrieval accepted.");
+  assert.equal(guestPoll.room.authoritativeState.message, "Cargo cart hitch accepted.");
+  assert.equal(guestPoll.room.authoritativeState.cart.ownerId, guest.memberId);
 
   const closeResponse = await fetch(crewUrl(host), {
     method: "DELETE",
