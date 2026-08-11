@@ -2362,6 +2362,16 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Encoded the selected tool in Crew Link presence so remote astronaut models and the host's
   authoritative extraction rules agree on each teammate's current field equipment.
 
+**Prototype status — Build 027 spectral tags**
+
+- Added floating, non-text method tags over every revealed deposit. Coral drill-bit,
+  yellow core-head, and cyan transfer-ring silhouettes reinforce the required tool without
+  relying on color alone.
+- Expanded scanner telemetry to name the nearest identified material and its required tool
+  before the player commits to crossing the map.
+- Added extraction-response pulses to deposit rings and method markers, with strong discrete
+  impacts for coring and smoother continuous feedback for drilling and siphon flow.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

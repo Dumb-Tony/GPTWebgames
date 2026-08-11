@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 026: a field-science harvesting pass with three selectable extraction tools, resource-specific methods, and Crew Link tool synchronization, building on the cargo-cart logistics and Vertical Slice Polish work introduced in Builds 021–025.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 027: a spectral-identification and harvesting-feedback pass layered onto the three-tool field kit, cargo-cart logistics, and Vertical Slice Polish work introduced in Builds 021–026.
 
 ## Playable build
 
@@ -19,6 +19,8 @@ The first prototype includes:
 - A selectable three-tool harvesting kit: thermal drill, percussion corer, and cryo siphon
 - Resource-specific extraction: metals are drilled, glass/fossils are core-sampled, and pressurized cargo is siphoned
 - Distinct extraction rhythms including continuous drilling, timed corer strikes, and seal-building siphon flow
+- Scanner identification of the nearest material and its required harvesting tool
+- Floating color-and-shape method tags above revealed deposits, with tool-specific extraction pulses
 - Mechanical drill wear, visible jams, and three-strike field repairs
 - Reproducible mission IDs with controlled cargo and deposit randomization
 - A late-mission meteor shower with readable impact warnings and physical blast force
@@ -144,7 +146,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 026 continues Milestone 9: Vertical Slice Polish by replacing universal drilling with resource-specific field science. Ferric Nodules and Platinum Cores require the heat-and-wear-limited Thermal Drill; Lunar Glass and Microfossils require rhythmic Percussion Corer strikes; Cryogenic Vials and Helium-3 Canisters require the Cryo Siphon's building vacuum seal. Players cycle tools with Tab, the mouse wheel, or the controller View button, and wrong-tool feedback names the required equipment. Crew Link now transmits each scientist's selected tool so host-authoritative multiplayer harvesting follows the same rules. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 027 continues Milestone 9: Vertical Slice Polish by making the Build 026 field kit readable before and during extraction. Revealed deposits now show floating method tags: coral drill bits for metals, yellow core heads for glass and fossils, and cyan transfer rings for pressurized samples. Scanner telemetry identifies the nearest material and required tool at range, while drilling, coring, and siphoning drive distinct beacon/ring pulses. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 

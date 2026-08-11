@@ -158,7 +158,7 @@ export function FieldNotes({ open, onOpenChange }: FieldNotesProps) {
             />
           </label>
           <div className={styles.noteSubmitRow}>
-            <small>{content.length}/700 · BUILD 026</small>
+            <small>{content.length}/700 · BUILD 027</small>
             <button type="submit" disabled={saving}>
               {saving ? "TRANSMITTING…" : "ADD SHARED NOTE"}
             </button>

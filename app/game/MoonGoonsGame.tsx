@@ -127,8 +127,10 @@ type DepositRuntime = {
   shell: THREE.Object3D;
   core: THREE.Object3D;
   ring: THREE.Object3D;
+  methodMarker: THREE.Group;
   shards: THREE.Group;
   beacon: THREE.PointLight;
+  harvestPulse: number;
 };
 
 type MeteorRuntime = {
@@ -185,6 +187,8 @@ type Snapshot = {
   signalsTracked: number;
   nearestSignalDistance: number | null;
   nearestSignalBearing: number | null;
+  nearestSignalName: string | null;
+  nearestSignalTool: HarvestToolId | null;
   tetheredCargo: string | null;
   tetherDistance: number | null;
   tetherTeamLift: boolean;
@@ -833,6 +837,46 @@ function crewHarvestTool(inputMask: number): HarvestToolId {
   return "drill";
 }
 
+function createHarvestMethodMarker(tool: HarvestToolId) {
+  const marker = new THREE.Group();
+  marker.position.y = 2.25;
+  const color =
+    tool === "drill" ? palette.coral : tool === "corer" ? palette.yellow : palette.cyan;
+  const halo = new THREE.Mesh(
+    new THREE.TorusGeometry(0.48, 0.045, 8, 24),
+    new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity: 0.82,
+      depthWrite: false,
+    }),
+  );
+  halo.rotation.x = Math.PI / 2;
+  marker.add(halo);
+
+  let glyph: THREE.Mesh;
+  if (tool === "drill") {
+    glyph = new THREE.Mesh(
+      new THREE.ConeGeometry(0.17, 0.62, 8),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+    glyph.rotation.z = Math.PI;
+  } else if (tool === "corer") {
+    glyph = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.2, 0.2, 0.58, 6),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+  } else {
+    glyph = new THREE.Mesh(
+      new THREE.TorusGeometry(0.22, 0.075, 8, 18),
+      new THREE.MeshBasicMaterial({ color }),
+    );
+    glyph.rotation.x = Math.PI / 2;
+  }
+  marker.add(glyph);
+  return marker;
+}
+
 function createDeposit(
   definition: DepositDefinition,
 ): DepositRuntime {
@@ -990,6 +1034,11 @@ function createDeposit(
   ring.position.y = 0.1;
   group.add(ring);
 
+  const methodMarker = createHarvestMethodMarker(
+    requiredHarvestTool(definition.kind),
+  );
+  group.add(methodMarker);
+
   const shards = new THREE.Group();
   for (let index = 0; index < 7; index += 1) {
     const angle = (index / 7) * Math.PI * 2;
@@ -1033,8 +1082,10 @@ function createDeposit(
     shell,
     core,
     ring,
+    methodMarker,
     shards,
     beacon,
+    harvestPulse: 0,
   };
 }
 
@@ -1561,6 +1612,8 @@ export function MoonGoonsGame() {
     signalsTracked: 0,
     nearestSignalDistance: null,
     nearestSignalBearing: null,
+    nearestSignalName: null,
+    nearestSignalTool: null,
     tetheredCargo: null,
     tetherDistance: null,
     tetherTeamLift: false,
@@ -2663,6 +2716,7 @@ export function MoonGoonsGame() {
       deposit.core.visible = deposit.state === "cargo" || deposit.state === "cart";
       deposit.shards.visible = deposit.state === "broken";
       deposit.ring.visible = deposit.state !== "broken" && deposit.state !== "cart";
+      deposit.methodMarker.visible = embedded;
       deposit.beacon.intensity = embedded ? 7 : deposit.state === "cargo" ? 9 : 0;
     };
 
@@ -3436,11 +3490,16 @@ export function MoonGoonsGame() {
             const harvestRate =
               memberTool === "drill" ? 20 : memberTool === "corer" ? 18 : 22;
             target.progress = Math.min(100, target.progress + dt * harvestRate);
+            target.harvestPulse = Math.max(
+              target.harvestPulse,
+              memberTool === "corer" ? 0.72 : memberTool === "siphon" ? 0.42 : 0.18,
+            );
             target.beacon.intensity = 11;
             if (target.progress >= 100) {
               target.state = "cargo";
               target.shell.visible = false;
               target.core.visible = true;
+              target.methodMarker.visible = false;
               target.beacon.intensity = 9;
               messageRef.current = `${member.name} extracted ${cargoData[target.kind].name} with the ${harvestToolData[memberTool].name}. Shared logistics problem created.`;
               sound("pickup");
@@ -3812,7 +3871,13 @@ export function MoonGoonsGame() {
             return;
           }
           deposit.group.rotation.y += dt * (deposit.state === "cargo" ? 0.58 : 0.16);
-          deposit.ring.scale.setScalar(1 + Math.sin(now * 0.003 + index) * 0.08);
+          deposit.harvestPulse = Math.max(0, deposit.harvestPulse - dt * 3.8);
+          const extractionPulse = deposit.harvestPulse * 0.34;
+          deposit.ring.scale.setScalar(
+            1 + Math.sin(now * 0.003 + index) * 0.08 + extractionPulse,
+          );
+          deposit.methodMarker.rotation.y += dt * 1.4;
+          deposit.methodMarker.scale.setScalar(1 + extractionPulse * 0.75);
           if (!hasAuthority) return;
           if (
             deposit.state === "cargo" &&
@@ -4176,6 +4241,10 @@ export function MoonGoonsGame() {
           let extractionGain = 0;
           if (activeHarvestTool === "drill") {
             extractionGain = dt * (heatRef.current > 72 ? 15 : 23);
+            nearestHarvestable.harvestPulse = Math.max(
+              nearestHarvestable.harvestPulse,
+              0.18,
+            );
             drillWearRef.current = Math.min(
               DRILL_JAM_WEAR,
               drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
@@ -4198,6 +4267,7 @@ export function MoonGoonsGame() {
             if (corerCycleRef.current >= 100) {
               corerCycleRef.current %= 100;
               extractionGain = 15;
+              nearestHarvestable.harvestPulse = 1;
               cameraImpact = Math.max(cameraImpact, 0.18);
               emitDustBurst(nearestHarvestable.position, 0.42);
               sound("repair");
@@ -4205,6 +4275,10 @@ export function MoonGoonsGame() {
           } else {
             siphonSealRef.current = Math.min(100, siphonSealRef.current + dt * 48);
             extractionGain = dt * (12 + siphonSealRef.current * 0.15);
+            nearestHarvestable.harvestPulse = Math.max(
+              nearestHarvestable.harvestPulse,
+              0.22 + siphonSealRef.current * 0.0028,
+            );
             (astronaut.userData.siphonValve as THREE.Mesh).rotation.z += dt * 5.2;
           }
           if (activeHarvestTool !== "drill") {
@@ -4254,6 +4328,7 @@ export function MoonGoonsGame() {
             nearestHarvestable.state = "cargo";
             nearestHarvestable.shell.visible = false;
             nearestHarvestable.core.visible = true;
+            nearestHarvestable.methodMarker.visible = false;
             nearestHarvestable.beacon.intensity = 9;
             messageRef.current = `${cargoData[
               nearestHarvestable.kind
@@ -4700,15 +4775,25 @@ export function MoonGoonsGame() {
             deposit.state !== "cart" &&
             deposit.id !== carryingRef.current,
         );
-        const nearestTracked = trackedSignals
-          .sort(
+        const nearestTracked =
+          nearbySignal ??
+          trackedSignals.sort(
             (a, b) =>
               a.position.distanceTo(astronaut.position) -
               b.position.distanceTo(astronaut.position),
           )[0];
         let nearestSignalDistance: number | null = null;
         let nearestSignalBearing: number | null = null;
+        let nearestSignalName: string | null = null;
+        let nearestSignalTool: HarvestToolId | null = null;
         if (nearestTracked) {
+          if (
+            nearestTracked.state === "revealed" ||
+            nearestTracked.state === "extracting"
+          ) {
+            nearestSignalName = cargoData[nearestTracked.kind].name;
+            nearestSignalTool = requiredHarvestTool(nearestTracked.kind);
+          }
           const trackedPosition = nearestTracked.group.getWorldPosition(
             new THREE.Vector3(),
           );
@@ -4959,6 +5044,8 @@ export function MoonGoonsGame() {
           signalsTracked: trackedSignals.length,
           nearestSignalDistance,
           nearestSignalBearing,
+          nearestSignalName,
+          nearestSignalTool,
           tetheredCargo: tethered ? cargoData[tethered.kind].name : null,
           tetherDistance,
           tetherTeamLift: (tethered?.tetherOwnerIds.length ?? 0) >= 2,
@@ -5118,6 +5205,8 @@ export function MoonGoonsGame() {
       signalsTracked: 0,
       nearestSignalDistance: null,
       nearestSignalBearing: null,
+      nearestSignalName: null,
+      nearestSignalTool: null,
       tetheredCargo: null,
       tetherDistance: null,
       tetherTeamLift: false,
@@ -5174,7 +5263,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 026 // FIELD KIT</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 027 // SPECTRAL TAGS</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -5425,6 +5514,18 @@ export function MoonGoonsGame() {
                         ? "AHEAD"
                         : formatSignalBearing(snapshot.nearestSignalBearing)
                     }`}
+              </strong>
+            </div>
+            <div className={styles.utilityToolStatus}>
+              <span>SPECTRAL ID</span>
+              <strong>
+                {snapshot.nearestSignalName && snapshot.nearestSignalTool
+                  ? `${snapshot.nearestSignalName.toUpperCase()} · ${
+                      harvestToolData[snapshot.nearestSignalTool].shortName
+                    } ${harvestToolData[
+                      snapshot.nearestSignalTool
+                    ].name.toUpperCase()}`
+                  : "SCAN TO CATALOG"}
               </strong>
             </div>
             <div
