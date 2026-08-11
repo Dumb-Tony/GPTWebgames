@@ -41,6 +41,48 @@ export type CargoKind =
   | "helium"
   | "fossil";
 
+export type HarvestToolId = "drill" | "corer" | "siphon";
+
+export const HARVEST_TOOL_ORDER: readonly HarvestToolId[] = [
+  "drill",
+  "corer",
+  "siphon",
+];
+
+export const harvestToolData: Record<
+  HarvestToolId,
+  { name: string; shortName: string; verb: string }
+> = {
+  drill: { name: "Thermal Drill", shortName: "DR", verb: "DRILL" },
+  corer: { name: "Percussion Corer", shortName: "PC", verb: "CORE" },
+  siphon: { name: "Cryo Siphon", shortName: "CS", verb: "SIPHON" },
+};
+
+const cargoHarvestTools: Record<CargoKind, HarvestToolId> = {
+  ferric: "drill",
+  platinum: "drill",
+  glass: "corer",
+  fossil: "corer",
+  vial: "siphon",
+  helium: "siphon",
+};
+
+export function requiredHarvestTool(kind: CargoKind) {
+  return cargoHarvestTools[kind];
+}
+
+export function canHarvestCargo(tool: HarvestToolId, kind: CargoKind) {
+  return requiredHarvestTool(kind) === tool;
+}
+
+export function nextHarvestTool(tool: HarvestToolId, direction = 1) {
+  const currentIndex = HARVEST_TOOL_ORDER.indexOf(tool);
+  const step = direction < 0 ? -1 : 1;
+  return HARVEST_TOOL_ORDER[
+    (currentIndex + step + HARVEST_TOOL_ORDER.length) % HARVEST_TOOL_ORDER.length
+  ];
+}
+
 export type CargoDefinition = {
   name: string;
   value: number;

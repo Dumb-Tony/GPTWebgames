@@ -193,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 025/);
+  assert.match(html, /BUILD 026/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -315,7 +315,7 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
     method: "PATCH",
     headers: headersFor(guest),
     body: JSON.stringify({
-      presence: { x: 8.5, y: 0, z: -3.25, yaw: 0.7, inputMask: 2 },
+      presence: { x: 8.5, y: 0, z: -3.25, yaw: 0.7, inputMask: 34 },
       action: { sequence: 1, type: "cart_toggle" },
     }),
   });
@@ -332,6 +332,7 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   );
   assert.equal(remoteMember.x, 8.5);
   assert.equal(remoteMember.z, -3.25);
+  assert.equal(remoteMember.inputMask, 34);
   assert.equal(hostPoll.room.actions.length, 1);
   assert.equal(hostPoll.room.actions[0].type, "cart_toggle");
 

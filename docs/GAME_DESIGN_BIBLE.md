@@ -2349,6 +2349,19 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Synchronized cart transform, hitch owner, cargo state, and slot manifest through the
   existing host-authoritative Crew Link model, including a two-client cart-action test.
 
+**Prototype status — Build 026 field kit**
+
+- Split Practice Moon harvesting across three selectable, physically modeled tools. The
+  Thermal Drill handles Ferric Nodules and Platinum Cores, the Percussion Corer handles
+  Lunar Glass and Microfossils, and the Cryo Siphon handles Cryogenic Vials and Helium-3.
+- Gave each method a different operating rhythm: the drill retains heat, wear, jams, and
+  field repair; the corer advances through discrete impact cycles; the siphon builds a
+  vacuum seal that increases transfer speed while the trigger remains held.
+- Added explicit wrong-tool feedback, contextual prompts, a live tool meter, keyboard and
+  controller cycling, and matching first-shift guidance.
+- Encoded the selected tool in Crew Link presence so remote astronaut models and the host's
+  authoritative extraction rules agree on each teammate's current field equipment.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

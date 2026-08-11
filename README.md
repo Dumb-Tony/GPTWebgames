@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 025: a bulk-haul logistics pass with a towable four-slot cargo cart, shared-crew loading, and one-action manifest delivery, building on the Practice Moon salvage kit and Vertical Slice Polish work introduced in Builds 021–024.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 026: a field-science harvesting pass with three selectable extraction tools, resource-specific methods, and Crew Link tool synchronization, building on the cargo-cart logistics and Vertical Slice Polish work introduced in Builds 021–025.
 
 ## Playable build
 
@@ -16,6 +16,9 @@ The first prototype includes:
 - Hidden deposits revealed by scanner pulses
 - Scanner telemetry for tracked contacts and nearest-signal distance
 - A drill with heat, efficiency loss, and thermal lockout
+- A selectable three-tool harvesting kit: thermal drill, percussion corer, and cryo siphon
+- Resource-specific extraction: metals are drilled, glass/fossils are core-sampled, and pressurized cargo is siphoned
+- Distinct extraction rhythms including continuous drilling, timed corer strikes, and seal-building siphon flow
 - Mechanical drill wear, visible jams, and three-strike field repairs
 - Reproducible mission IDs with controlled cargo and deposit randomization
 - A late-mission meteor shower with readable impact warnings and physical blast force
@@ -83,7 +86,8 @@ using the public build can review and add to the same development log.
 | Escape | Release the mouse |
 | Space | Moon hop |
 | Q | Scanner pulse |
-| Hold F | Drill |
+| Tab / mouse wheel | Cycle thermal drill, percussion corer, and cryo siphon |
+| Hold F | Operate the selected harvesting tool |
 | R | Repair a jammed drill |
 | E | Grab, drop, deposit, launch, or hold to reboot a disabled suit |
 | Shift + E | Throw carried cargo (fragile samples may lose value on impact) |
@@ -103,7 +107,8 @@ using the public build can review and add to the same development log.
 | A / Cross | Hop and hold for EVA boost |
 | X / Square | Interact, pick up, deposit, or reboot suit |
 | Y / Triangle | Scanner pulse |
-| Right trigger | Drill |
+| View / Select | Cycle harvesting tool |
+| Right trigger | Operate selected harvesting tool |
 | Left bumper | Tether / release |
 | Left stick click | Hitch / release cargo cart |
 | Left trigger | Magnetic retriever |
@@ -139,7 +144,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 025 continues Milestone 9: Vertical Slice Polish by replacing the static rover prop with a host-authoritative four-slot cargo cart. A player can hitch it with H or left-stick click, teammates can load extracted samples with E/X, and the complete manifest can be deposited at the ship receiver in one action. Cart position, ownership, cargo slots, and bulk delivery synchronize through Crew Link, with the real two-client integration test now relaying and acknowledging a cart hitch. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 026 continues Milestone 9: Vertical Slice Polish by replacing universal drilling with resource-specific field science. Ferric Nodules and Platinum Cores require the heat-and-wear-limited Thermal Drill; Lunar Glass and Microfossils require rhythmic Percussion Corer strikes; Cryogenic Vials and Helium-3 Canisters require the Cryo Siphon's building vacuum seal. Players cycle tools with Tab, the mouse wheel, or the controller View button, and wrong-tool feedback names the required equipment. Crew Link now transmits each scientist's selected tool so host-authoritative multiplayer harvesting follows the same rules. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 

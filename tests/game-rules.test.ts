@@ -7,6 +7,7 @@ import {
   TETHER_BREAK_RANGE,
   advanceSuitRecovery,
   applySuitDamage,
+  canHarvestCargo,
   canLoadCargoCart,
   canAirmailCargo,
   calculateBankShotBonus,
@@ -21,10 +22,12 @@ import {
   formatSignalBearing,
   formatTime,
   missionMaximumValue,
+  nextHarvestTool,
   nextMissionSeed,
   normalizeControlSettings,
   predictCargoThrow,
   registerRepairStrike,
+  requiredHarvestTool,
   renderPixelRatioCap,
   seededRandom,
 } from "../app/game/gameRules.ts";
@@ -155,7 +158,7 @@ test("network transforms clamp untrusted client movement and input", () => {
   assert.equal(transform.y, 0);
   assert.equal(transform.z, -48);
   assert.ok(Math.abs(transform.yaw - Math.PI) < 0.000001);
-  assert.equal(transform.inputMask, 15);
+  assert.equal(transform.inputMask, 63);
 });
 
 test("crew colors wrap and presence expiration has a clear boundary", () => {
@@ -249,6 +252,20 @@ test("cargo payout respects condition and cannot exceed its base value", () => {
   assert.equal(calculateCargoValue("glass", 0.5), 160);
   assert.equal(calculateCargoValue("ferric", 2), 180);
   assert.equal(calculateCargoValue("ferric", -1), 0);
+});
+
+test("the field kit routes each sample to a distinct harvesting method", () => {
+  assert.equal(requiredHarvestTool("ferric"), "drill");
+  assert.equal(requiredHarvestTool("platinum"), "drill");
+  assert.equal(requiredHarvestTool("glass"), "corer");
+  assert.equal(requiredHarvestTool("fossil"), "corer");
+  assert.equal(requiredHarvestTool("vial"), "siphon");
+  assert.equal(requiredHarvestTool("helium"), "siphon");
+  assert.equal(canHarvestCargo("corer", "glass"), true);
+  assert.equal(canHarvestCargo("drill", "glass"), false);
+  assert.equal(nextHarvestTool("drill"), "corer");
+  assert.equal(nextHarvestTool("siphon"), "drill");
+  assert.equal(nextHarvestTool("drill", -1), "siphon");
 });
 
 test("cargo carts enforce four slots, load-aware towing, and a single manifest payout", () => {
@@ -386,6 +403,7 @@ test("standard controllers apply deadzones and expose the complete field control
   buttons[5] = { pressed: true, value: 1 };
   buttons[6] = { pressed: true, value: 1 };
   buttons[7] = { pressed: false, value: 0.8 };
+  buttons[8] = { pressed: true, value: 1 };
   buttons[10] = { pressed: true, value: 1 };
   buttons[11] = { pressed: true, value: 1 };
   buttons[13] = { pressed: true, value: 1 };
@@ -407,6 +425,7 @@ test("standard controllers apply deadzones and expose the complete field control
   assert.equal(input.magnet, true);
   assert.equal(input.stabilize, true);
   assert.equal(input.cartToggle, true);
+  assert.equal(input.toolCycle, true);
   assert.equal(input.throwCargo, true);
   assert.equal(input.pingDanger, true);
 });

@@ -14,6 +14,8 @@ import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
   CREW_INPUT_MOVING,
+  CREW_INPUT_TOOL_CORER,
+  CREW_INPUT_TOOL_SIPHON,
   CREW_INPUT_THRUSTER,
   CREW_SYNC_INTERVAL_MS,
   DEFAULT_CREW_NETWORK_TUNING,
@@ -36,6 +38,7 @@ import {
   advanceSuitRecovery,
   applySuitDamage as calculateSuitDamage,
   canAirmailCargo,
+  canHarvestCargo,
   canLoadCargoCart,
   calculateBankShotBonus,
   calculateCargoBounce,
@@ -48,15 +51,19 @@ import {
   createMissionDepositDefinitions,
   formatSignalBearing,
   formatTime,
+  harvestToolData,
   nextMissionSeed,
+  nextHarvestTool,
   normalizeControlSettings,
   predictCargoThrow,
   registerRepairStrike,
+  requiredHarvestTool,
   renderPixelRatioCap,
   seededRandom,
   type CargoKind,
   type ControlSettings,
   type DepositDefinition,
+  type HarvestToolId,
 } from "./gameRules";
 import {
   CONTRACTS,
@@ -144,6 +151,8 @@ type Snapshot = {
   overheated: boolean;
   drillWear: number;
   drillJammed: boolean;
+  activeHarvestTool: HarvestToolId;
+  harvestMeter: number;
   repairProgress: number;
   repairsCompleted: number;
   airmailDeliveries: number;
@@ -700,6 +709,66 @@ function createAstronaut(suitColor = palette.yellow) {
   drill.add(drillLight);
   astronaut.add(drill);
 
+  const corer = new THREE.Group();
+  corer.position.copy(drill.position);
+  corer.rotation.copy(drill.rotation);
+  corer.add(cylinder(0.3, 0.4, 1.45, palette.cream, [0, 0, 0], 10, {
+    metalness: 0.46,
+    roughness: 0.4,
+  }));
+  corer.add(cylinder(0.18, 0.22, 1.7, palette.yellow, [0, -1.42, 0], 10, {
+    emissive: 0x6d5312,
+    emissiveIntensity: 0.8,
+    metalness: 0.62,
+  }));
+  corer.add(box([1.2, 0.18, 0.22], palette.graphite, [0, 0.56, 0]));
+  const corerHead = cylinder(0.42, 0.42, 0.38, palette.coral, [0, -2.35, 0], 10, {
+    emissive: 0x6a281d,
+    emissiveIntensity: 0.75,
+    metalness: 0.7,
+  });
+  corer.add(corerHead);
+  const corerLight = box([0.2, 0.42, 0.42], palette.yellow, [0.34, 0.1, 0], {
+    emissive: palette.yellow,
+    emissiveIntensity: 2.8,
+  });
+  corer.add(corerLight);
+  corer.visible = false;
+  astronaut.add(corer);
+
+  const siphon = new THREE.Group();
+  siphon.position.copy(drill.position);
+  siphon.rotation.copy(drill.rotation);
+  siphon.add(cylinder(0.48, 0.48, 1.25, 0x9fd8d1, [0, 0.18, 0], 12, {
+    emissive: 0x184f56,
+    emissiveIntensity: 0.55,
+    metalness: 0.38,
+    roughness: 0.32,
+  }));
+  siphon.add(cylinder(0.12, 0.2, 2.15, palette.cyan, [0, -1.45, 0], 10, {
+    emissive: 0x195c68,
+    emissiveIntensity: 1.1,
+    metalness: 0.54,
+  }));
+  const siphonValve = new THREE.Mesh(
+    new THREE.TorusGeometry(0.42, 0.07, 8, 18),
+    standardMaterial(palette.coral, {
+      emissive: 0x67251b,
+      emissiveIntensity: 0.9,
+      metalness: 0.58,
+    }),
+  );
+  siphonValve.position.set(0, 0.72, 0);
+  siphonValve.rotation.x = Math.PI / 2;
+  siphon.add(siphonValve);
+  const siphonLight = box([0.2, 0.42, 0.42], palette.cyan, [0.52, 0.15, 0], {
+    emissive: palette.cyan,
+    emissiveIntensity: 3.2,
+  });
+  siphon.add(siphonLight);
+  siphon.visible = false;
+  astronaut.add(siphon);
+
   const thrusterMaterial = new THREE.MeshBasicMaterial({
     color: palette.cyan,
     transparent: true,
@@ -728,10 +797,40 @@ function createAstronaut(suitColor = palette.yellow) {
   astronaut.userData.rightLeg = rightLeg;
   astronaut.userData.drill = drill;
   astronaut.userData.drillLight = drillLight;
+  astronaut.userData.harvestTools = { drill, corer, siphon } satisfies Record<
+    HarvestToolId,
+    THREE.Group
+  >;
+  astronaut.userData.harvestToolLights = {
+    drill: drillLight,
+    corer: corerLight,
+    siphon: siphonLight,
+  } satisfies Record<HarvestToolId, THREE.Mesh>;
+  astronaut.userData.corerHead = corerHead;
+  astronaut.userData.siphonValve = siphonValve;
   astronaut.userData.visor = visor;
   astronaut.userData.thrusterFlames = thrusterFlames;
   astronaut.userData.thrusterGlow = thrusterGlow;
   return astronaut;
+}
+
+function setAstronautHarvestTool(
+  astronaut: THREE.Group,
+  tool: HarvestToolId,
+) {
+  const tools = astronaut.userData.harvestTools as Record<
+    HarvestToolId,
+    THREE.Group
+  >;
+  Object.entries(tools).forEach(([id, model]) => {
+    model.visible = id === tool;
+  });
+}
+
+function crewHarvestTool(inputMask: number): HarvestToolId {
+  if ((inputMask & CREW_INPUT_TOOL_SIPHON) !== 0) return "siphon";
+  if ((inputMask & CREW_INPUT_TOOL_CORER) !== 0) return "corer";
+  return "drill";
 }
 
 function createDeposit(
@@ -1312,6 +1411,9 @@ export function MoonGoonsGame() {
   const overheatedRef = useRef(false);
   const drillWearRef = useRef(0);
   const drillJammedRef = useRef(false);
+  const activeHarvestToolRef = useRef<HarvestToolId>("drill");
+  const corerCycleRef = useRef(0);
+  const siphonSealRef = useRef(0);
   const repairProgressRef = useRef(0);
   const repairsCompletedRef = useRef(0);
   const airmailDeliveriesRef = useRef(0);
@@ -1425,6 +1527,8 @@ export function MoonGoonsGame() {
     overheated: false,
     drillWear: 0,
     drillJammed: false,
+    activeHarvestTool: "drill",
+    harvestMeter: 0,
     repairProgress: 0,
     repairsCompleted: 0,
     airmailDeliveries: 0,
@@ -2037,9 +2141,12 @@ export function MoonGoonsGame() {
     let padMagnetLatch = false;
     let padStabilizerLatch = false;
     let padCartLatch = false;
+    let padToolCycleLatch = false;
     let padMenuLatch = false;
     let padPingLatch = false;
     let lastPadConnected = false;
+    let wrongHarvestToolLatch = false;
+    let lastToolWheelAt = 0;
 
     const shatterDeposit = (deposit: DepositRuntime, impactSpeed: number) => {
       deposit.state = "broken";
@@ -2244,6 +2351,10 @@ export function MoonGoonsGame() {
       overheatedRef.current = false;
       drillWearRef.current = 0;
       drillJammedRef.current = false;
+      activeHarvestToolRef.current = "drill";
+      corerCycleRef.current = 0;
+      siphonSealRef.current = 0;
+      setAstronautHarvestTool(astronaut, "drill");
       repairProgressRef.current = 0;
       repairsCompletedRef.current = 0;
       airmailDeliveriesRef.current = 0;
@@ -2320,6 +2431,21 @@ export function MoonGoonsGame() {
     onResize();
     window.addEventListener("resize", onResize);
 
+    const cycleHarvestTool = (direction = 1) => {
+      const nextTool = nextHarvestTool(activeHarvestToolRef.current, direction);
+      activeHarvestToolRef.current = nextTool;
+      setAstronautHarvestTool(astronaut, nextTool);
+      const tool = harvestToolData[nextTool];
+      messageRef.current = `${tool.name.toUpperCase()} EQUIPPED // ${
+        nextTool === "drill"
+          ? "DENSE METALS"
+          : nextTool === "corer"
+            ? "GLASS + FOSSILS"
+            : "PRESSURIZED SAMPLES"
+      }.`;
+      sound("scan");
+    };
+
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target;
       if (
@@ -2328,8 +2454,11 @@ export function MoonGoonsGame() {
       ) {
         return;
       }
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(event.code)) {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(event.code)) {
         event.preventDefault();
+      }
+      if (event.code === "Tab" && !event.repeat && phaseRef.current === "active") {
+        cycleHarvestTool(event.shiftKey ? -1 : 1);
       }
       if (event.code === "KeyP" && !event.repeat && crewSessionRef.current) {
         if (crewSessionRef.current.role === "guest") {
@@ -2449,11 +2578,27 @@ export function MoonGoonsGame() {
         0.34,
       );
     };
+    const onWheel = (event: WheelEvent) => {
+      if (
+        document.pointerLockElement !== renderer.domElement ||
+        phaseRef.current !== "active" ||
+        notesOpenRef.current ||
+        settingsOpenRef.current
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const now = performance.now();
+      if (now - lastToolWheelAt < 180 || Math.abs(event.deltaY) < 1) return;
+      lastToolWheelAt = now;
+      cycleHarvestTool(event.deltaY < 0 ? -1 : 1);
+    };
     window.addEventListener("keydown", onKeyDown, { passive: false });
     window.addEventListener("keyup", onKeyUp);
     document.addEventListener("pointerlockchange", onPointerLockChange);
     document.addEventListener("pointerlockerror", onPointerLockError);
     document.addEventListener("mousemove", onMouseMove);
+    mount.addEventListener("wheel", onWheel, { passive: false });
     mount.addEventListener("click", requestMouseLock);
 
     const updateDrillBeam = (start: THREE.Vector3, end: THREE.Vector3) => {
@@ -2954,8 +3099,17 @@ export function MoonGoonsGame() {
             dt,
           );
           const drilling = (remote.inputMask & CREW_INPUT_DRILL) !== 0;
+          const remoteTool = crewHarvestTool(remote.inputMask);
+          setAstronautHarvestTool(remote.group, remoteTool);
           if (drilling) {
-            (remote.group.userData.drill as THREE.Group).rotation.y += dt * 34;
+            if (remoteTool === "drill") {
+              (remote.group.userData.drill as THREE.Group).rotation.y += dt * 34;
+            } else if (remoteTool === "corer") {
+              const head = remote.group.userData.corerHead as THREE.Mesh;
+              head.position.y = -2.35 + Math.sin(now * 0.03) * 0.18;
+            } else {
+              (remote.group.userData.siphonValve as THREE.Mesh).rotation.z += dt * 4.5;
+            }
           }
           const thruster = (remote.inputMask & CREW_INPUT_THRUSTER) !== 0;
           (remote.group.userData.thrusterFlames as THREE.Mesh[]).forEach((flame) => {
@@ -3043,6 +3197,11 @@ export function MoonGoonsGame() {
         if (document.pointerLockElement) document.exitPointerLock();
       }
       padMenuLatch = pad.menu;
+
+      if (pad.toolCycle && !padToolCycleLatch && gameplayInputEnabled) {
+        cycleHarvestTool(1);
+      }
+      padToolCycleLatch = pad.toolCycle;
 
       if (pad.tether && !padTetherLatch && gameplayInputEnabled) {
         const activeSession = crewSessionRef.current;
@@ -3259,6 +3418,7 @@ export function MoonGoonsGame() {
               return;
             }
             const memberPosition = new THREE.Vector3(member.x, member.y, member.z);
+            const memberTool = crewHarvestTool(member.inputMask);
             const target = deposits
               .filter(
                 (deposit) =>
@@ -3269,17 +3429,20 @@ export function MoonGoonsGame() {
                 (a, b) =>
                   a.group.position.distanceTo(memberPosition) -
                   b.group.position.distanceTo(memberPosition),
-              )[0];
+            )[0];
             if (!target || target.group.position.distanceTo(memberPosition) >= 3) return;
+            if (!canHarvestCargo(memberTool, target.kind)) return;
             target.state = "extracting";
-            target.progress = Math.min(100, target.progress + dt * 20);
+            const harvestRate =
+              memberTool === "drill" ? 20 : memberTool === "corer" ? 18 : 22;
+            target.progress = Math.min(100, target.progress + dt * harvestRate);
             target.beacon.intensity = 11;
             if (target.progress >= 100) {
               target.state = "cargo";
               target.shell.visible = false;
               target.core.visible = true;
               target.beacon.intensity = 9;
-              messageRef.current = `${member.name} extracted ${cargoData[target.kind].name}. Shared logistics problem created.`;
+              messageRef.current = `${member.name} extracted ${cargoData[target.kind].name} with the ${harvestToolData[memberTool].name}. Shared logistics problem created.`;
               sound("pickup");
             }
           });
@@ -3908,7 +4071,7 @@ export function MoonGoonsGame() {
           tetherLines.delete(ownerId);
         });
 
-        const nearestDrillable = deposits
+        const nearestHarvestable = deposits
           .filter(
             (deposit) =>
               deposit.state === "revealed" || deposit.state === "extracting",
@@ -3918,15 +4081,43 @@ export function MoonGoonsGame() {
               a.position.distanceTo(astronaut.position) -
               b.position.distanceTo(astronaut.position),
           )[0];
-        const drilling =
+        const activeHarvestTool = activeHarvestToolRef.current;
+        const harvestToolMatches = Boolean(
+          nearestHarvestable &&
+            canHarvestCargo(activeHarvestTool, nearestHarvestable.kind),
+        );
+        const activeToolAvailable =
+          activeHarvestTool !== "drill" ||
+          (!overheatedRef.current && !drillJammedRef.current);
+        const harvesting =
           !incapacitated &&
           drillInput &&
-          nearestDrillable &&
-          nearestDrillable.position.distanceTo(astronaut.position) < 3 &&
+          nearestHarvestable &&
+          nearestHarvestable.position.distanceTo(astronaut.position) < 3 &&
+          harvestToolMatches &&
           carryingRef.current === null &&
           playerHeight < 0.15 &&
-          !overheatedRef.current &&
-          !drillJammedRef.current;
+          activeToolAvailable;
+
+        const wrongToolAttempt = Boolean(
+          !incapacitated &&
+            drillInput &&
+            nearestHarvestable &&
+            nearestHarvestable.position.distanceTo(astronaut.position) < 3 &&
+            !harvestToolMatches,
+        );
+        if (wrongToolAttempt && !wrongHarvestToolLatch && nearestHarvestable) {
+          const requiredTool = requiredHarvestTool(nearestHarvestable.kind);
+          messageRef.current = `${harvestToolData[
+            activeHarvestTool
+          ].name.toUpperCase()} REJECTED // ${cargoData[
+            nearestHarvestable.kind
+          ].name.toUpperCase()} REQUIRES ${harvestToolData[
+            requiredTool
+          ].name.toUpperCase()}. TAB OR MOUSE WHEEL TO SWITCH.`;
+          sound("warning");
+        }
+        wrongHarvestToolLatch = wrongToolAttempt;
 
         const drill = astronaut.userData.drill as THREE.Group;
         const drillLight = astronaut.userData.drillLight as THREE.Mesh;
@@ -3979,47 +4170,102 @@ export function MoonGoonsGame() {
             : 0.25
           : 2.6;
 
-        if (drilling && nearestDrillable) {
+        if (harvesting && nearestHarvestable) {
           tutorialDrilledRef.current = true;
-          if (hasAuthority) {
-            nearestDrillable.state = "extracting";
-            nearestDrillable.progress += dt * (heatRef.current > 72 ? 15 : 23);
+          nearestHarvestable.state = "extracting";
+          let extractionGain = 0;
+          if (activeHarvestTool === "drill") {
+            extractionGain = dt * (heatRef.current > 72 ? 15 : 23);
+            drillWearRef.current = Math.min(
+              DRILL_JAM_WEAR,
+              drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
+            );
+            const upgradedCooling = hasEquippedUpgrade(
+              progressionRef.current,
+              "cooling_jacket",
+            );
+            heatRef.current = Math.min(
+              100,
+              heatRef.current + dt * 33 * (upgradedCooling ? 0.76 : 1),
+            );
+            drill.rotation.y += dt * 34;
+            drill.position.y = 2.7 + Math.sin(now * 0.07) * 0.045;
+          } else if (activeHarvestTool === "corer") {
+            corerCycleRef.current += dt * 112;
+            const corerHead = astronaut.userData.corerHead as THREE.Mesh;
+            corerHead.position.y =
+              -2.35 + Math.sin((corerCycleRef.current / 100) * Math.PI) * 0.28;
+            if (corerCycleRef.current >= 100) {
+              corerCycleRef.current %= 100;
+              extractionGain = 15;
+              cameraImpact = Math.max(cameraImpact, 0.18);
+              emitDustBurst(nearestHarvestable.position, 0.42);
+              sound("repair");
+            }
+          } else {
+            siphonSealRef.current = Math.min(100, siphonSealRef.current + dt * 48);
+            extractionGain = dt * (12 + siphonSealRef.current * 0.15);
+            (astronaut.userData.siphonValve as THREE.Mesh).rotation.z += dt * 5.2;
           }
-          drillWearRef.current = Math.min(
-            DRILL_JAM_WEAR,
-            drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
-          );
-          const upgradedCooling = hasEquippedUpgrade(
-            progressionRef.current,
-            "cooling_jacket",
-          );
-          heatRef.current = Math.min(
-            100,
-            heatRef.current + dt * 33 * (upgradedCooling ? 0.76 : 1),
-          );
-          drill.rotation.y += dt * 34;
-          drill.position.y = 2.7 + Math.sin(now * 0.07) * 0.045;
+          if (activeHarvestTool !== "drill") {
+            heatRef.current = Math.max(
+              0,
+              heatRef.current -
+                dt *
+                  25 *
+                  (hasEquippedUpgrade(progressionRef.current, "cooling_jacket")
+                    ? 1.2
+                    : 1),
+            );
+            if (overheatedRef.current && heatRef.current <= 34) {
+              overheatedRef.current = false;
+            }
+          }
+          if (hasAuthority) {
+            nearestHarvestable.progress = Math.min(
+              100,
+              nearestHarvestable.progress + extractionGain,
+            );
+          }
           const start = new THREE.Vector3();
-          drill.getWorldPosition(start);
+          const activeToolModel = (
+            astronaut.userData.harvestTools as Record<HarvestToolId, THREE.Group>
+          )[activeHarvestTool];
+          activeToolModel.getWorldPosition(start);
+          const beamMaterial = drillBeam.material as THREE.MeshBasicMaterial;
+          const toolColor =
+            activeHarvestTool === "drill"
+              ? palette.coral
+              : activeHarvestTool === "corer"
+                ? palette.yellow
+                : palette.cyan;
+          beamMaterial.color.setHex(toolColor);
+          drillGlow.color.setHex(toolColor);
           updateDrillBeam(
             start,
-            nearestDrillable.position.clone().add(new THREE.Vector3(0, 0.55, 0)),
+            nearestHarvestable.position.clone().add(new THREE.Vector3(0, 0.55, 0)),
           );
           drillBeam.visible = true;
-          drillGlow.intensity = 16 + Math.sin(now * 0.08) * 5;
-          nearestDrillable.beacon.intensity = 11;
-          if (hasAuthority && nearestDrillable.progress >= 100) {
-            nearestDrillable.progress = 100;
-            nearestDrillable.state = "cargo";
-            nearestDrillable.shell.visible = false;
-            nearestDrillable.core.visible = true;
-            nearestDrillable.beacon.intensity = 9;
-            messageRef.current = `${cargoData[nearestDrillable.kind].name} extracted // ${cargoData[
-              nearestDrillable.kind
+          drillGlow.intensity =
+            (activeHarvestTool === "siphon" ? 11 : 16) + Math.sin(now * 0.08) * 4;
+          nearestHarvestable.beacon.intensity = 11;
+          if (hasAuthority && nearestHarvestable.progress >= 100) {
+            nearestHarvestable.progress = 100;
+            nearestHarvestable.state = "cargo";
+            nearestHarvestable.shell.visible = false;
+            nearestHarvestable.core.visible = true;
+            nearestHarvestable.beacon.intensity = 9;
+            messageRef.current = `${cargoData[
+              nearestHarvestable.kind
+            ].name} harvested with the ${harvestToolData[activeHarvestTool].name} // ${cargoData[
+              nearestHarvestable.kind
             ].structure}. It is now a logistics problem.`;
             sound("pickup");
           }
-          if (drillWearRef.current >= DRILL_JAM_WEAR) {
+          if (
+            activeHarvestTool === "drill" &&
+            drillWearRef.current >= DRILL_JAM_WEAR
+          ) {
             drillJammedRef.current = true;
             repairProgressRef.current = 0;
             drillBeam.visible = false;
@@ -4027,7 +4273,7 @@ export function MoonGoonsGame() {
             messageRef.current =
               "DRILL JAMMED. TAP R THREE TIMES FOR APPROVED PERCUSSIVE MAINTENANCE.";
             sound("warning");
-          } else if (heatRef.current >= 100) {
+          } else if (activeHarvestTool === "drill" && heatRef.current >= 100) {
             heatRef.current = 100;
             overheatedRef.current = true;
             drillBeam.visible = false;
@@ -4038,6 +4284,8 @@ export function MoonGoonsGame() {
         } else {
           drillBeam.visible = false;
           drillGlow.intensity = 0;
+          corerCycleRef.current = Math.max(0, corerCycleRef.current - dt * 42);
+          siphonSealRef.current = Math.max(0, siphonSealRef.current - dt * 34);
           heatRef.current = Math.max(
             0,
             heatRef.current -
@@ -4206,12 +4454,18 @@ export function MoonGoonsGame() {
       }
 
       let networkInputMask = 0;
+      const networkHarvestTool = activeHarvestToolRef.current;
       if (
         (keys.has("KeyF") || pad.drill) &&
-        !overheatedRef.current &&
-        !drillJammedRef.current
+        (networkHarvestTool !== "drill" ||
+          (!overheatedRef.current && !drillJammedRef.current))
       ) {
         networkInputMask |= CREW_INPUT_DRILL;
+      }
+      if (networkHarvestTool === "corer") {
+        networkInputMask |= CREW_INPUT_TOOL_CORER;
+      } else if (networkHarvestTool === "siphon") {
+        networkInputMask |= CREW_INPUT_TOOL_SIPHON;
       }
       if (
         keys.has("KeyW") ||
@@ -4533,9 +4787,22 @@ export function MoonGoonsGame() {
           nearbySignal &&
           nearbySignal.position.distanceTo(astronaut.position) < 3
         ) {
-          prompt = overheatedRef.current
-            ? "DRILL COOLING · PLEASE PRETEND THIS IS NORMAL"
-            : `HOLD F · EXTRACT ${cargoData[nearbySignal.kind].name.toUpperCase()} · ${Math.round(nearbySignal.progress)}%`;
+          const requiredTool = requiredHarvestTool(nearbySignal.kind);
+          const selectedTool = activeHarvestToolRef.current;
+          prompt =
+            selectedTool !== requiredTool
+              ? `TAB / WHEEL · SELECT ${harvestToolData[
+                  requiredTool
+                ].name.toUpperCase()} FOR ${cargoData[nearbySignal.kind].name.toUpperCase()}`
+              : selectedTool === "drill" && overheatedRef.current
+                ? "DRILL COOLING · SWITCH TOOLS OR WAIT"
+                : selectedTool === "drill" && drillJammedRef.current
+                  ? "TAP R · REPAIR JAMMED THERMAL DRILL"
+                  : `HOLD F · ${harvestToolData[
+                      selectedTool
+                    ].verb} ${cargoData[
+                      nearbySignal.kind
+                    ].name.toUpperCase()} · ${Math.round(nearbySignal.progress)}%`;
         } else if (
           scoreRef.current >= CONTRACTS[activeContractIdRef.current].target &&
           homeDistance < 7.2
@@ -4548,7 +4815,10 @@ export function MoonGoonsGame() {
         } else if (playerHeight > 0.4 && thrusterFuel > 0) {
           prompt = `HOLD SPACE · EVA THRUSTER · ${Math.round(thrusterFuel)}%`;
         }
-        if (drillJammedRef.current) {
+        if (
+          drillJammedRef.current &&
+          activeHarvestToolRef.current === "drill"
+        ) {
           const repairHitsRemaining = Math.ceil(
             (100 - repairProgressRef.current) / 34,
           );
@@ -4647,6 +4917,13 @@ export function MoonGoonsGame() {
           overheated: overheatedRef.current,
           drillWear: drillWearRef.current,
           drillJammed: drillJammedRef.current,
+          activeHarvestTool: activeHarvestToolRef.current,
+          harvestMeter:
+            activeHarvestToolRef.current === "drill"
+              ? heatRef.current
+              : activeHarvestToolRef.current === "corer"
+                ? corerCycleRef.current
+                : siphonSealRef.current,
           repairProgress: repairProgressRef.current,
           repairsCompleted: repairsCompletedRef.current,
           airmailDeliveries: airmailDeliveriesRef.current,
@@ -4708,6 +4985,7 @@ export function MoonGoonsGame() {
       document.removeEventListener("pointerlockchange", onPointerLockChange);
       document.removeEventListener("pointerlockerror", onPointerLockError);
       document.removeEventListener("mousemove", onMouseMove);
+      mount.removeEventListener("wheel", onWheel);
       mount.removeEventListener("click", requestMouseLock);
       if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
       pointerTargetRef.current = null;
@@ -4806,6 +5084,8 @@ export function MoonGoonsGame() {
       overheated: false,
       drillWear: 0,
       drillJammed: false,
+      activeHarvestTool: "drill",
+      harvestMeter: 0,
       repairProgress: 0,
       repairsCompleted: 0,
       airmailDeliveries: 0,
@@ -4855,6 +5135,13 @@ export function MoonGoonsGame() {
 
   const percent = Math.min(100, (snapshot.score / snapshot.contractTarget) * 100);
   const urgent = snapshot.phase === "active" && snapshot.time <= 30;
+  const selectedHarvestTool = harvestToolData[snapshot.activeHarvestTool];
+  const harvestMeterLabel =
+    snapshot.activeHarvestTool === "drill"
+      ? "CORE HEAT"
+      : snapshot.activeHarvestTool === "corer"
+        ? "STRIKE CYCLE"
+        : "VACUUM SEAL";
 
   return (
     <main
@@ -4887,7 +5174,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 025 // BULK HAUL</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 026 // FIELD KIT</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -5024,47 +5311,77 @@ export function MoonGoonsGame() {
 
           <aside className={styles.toolPanel}>
             <div className={styles.toolHeading}>
-              <span className={styles.toolIcon}>DR</span>
+              <span className={styles.toolIcon}>{selectedHarvestTool.shortName}</span>
               <div>
-                <strong>ISSUE DRILL</strong>
+                <strong>{selectedHarvestTool.name.toUpperCase()}</strong>
                 <small>
-                  {snapshot.drillJammed
-                    ? "MECHANICAL JAM // R TO REPAIR"
-                    : snapshot.overheated
-                      ? "THERMAL LOCKOUT"
-                      : "QUESTIONABLY OPERATIONAL"}
+                  {snapshot.activeHarvestTool === "drill"
+                    ? snapshot.drillJammed
+                      ? "MECHANICAL JAM // R TO REPAIR"
+                      : snapshot.overheated
+                        ? "THERMAL LOCKOUT"
+                        : "METALS // QUESTIONABLY OPERATIONAL"
+                    : snapshot.activeHarvestTool === "corer"
+                      ? "GLASS + FOSSILS // PULSE EXTRACTION"
+                      : "PRESSURIZED // SEAL + FLOW"}
                 </small>
               </div>
             </div>
             <div className={styles.heatLabel}>
-              <span>CORE HEAT</span>
-              <strong>{Math.round(snapshot.heat)}%</strong>
+              <span>{harvestMeterLabel}</span>
+              <strong>{Math.round(snapshot.harvestMeter)}%</strong>
             </div>
             <div className={styles.heatTrack}>
               <div
-                className={snapshot.overheated ? styles.heatDanger : ""}
-                style={{ width: `${snapshot.heat}%` }}
+                className={
+                  snapshot.activeHarvestTool === "drill" && snapshot.overheated
+                    ? styles.heatDanger
+                    : ""
+                }
+                style={{ width: `${snapshot.harvestMeter}%` }}
               />
             </div>
             <div className={styles.integrityLabel}>
-              <span>{snapshot.drillJammed ? "PERCUSSIVE REPAIR" : "DRIVE CONDITION"}</span>
+              <span>
+                {snapshot.activeHarvestTool === "drill"
+                  ? snapshot.drillJammed
+                    ? "PERCUSSIVE REPAIR"
+                    : "DRIVE CONDITION"
+                  : snapshot.activeHarvestTool === "corer"
+                    ? "IMPACT METHOD"
+                    : "TRANSFER METHOD"}
+              </span>
               <strong>
-                {snapshot.drillJammed
-                  ? `${Math.round(snapshot.repairProgress)}%`
-                  : `${Math.round(100 - snapshot.drillWear)}%`}
+                {snapshot.activeHarvestTool === "drill"
+                  ? snapshot.drillJammed
+                    ? `${Math.round(snapshot.repairProgress)}%`
+                    : `${Math.round(100 - snapshot.drillWear)}%`
+                  : snapshot.activeHarvestTool === "corer"
+                    ? "TIMED STRIKES"
+                    : "CONTINUOUS"}
               </strong>
             </div>
             <div className={styles.integrityTrack}>
               <div
-                className={snapshot.drillJammed ? styles.integrityDanger : ""}
+                className={
+                  snapshot.activeHarvestTool === "drill" && snapshot.drillJammed
+                    ? styles.integrityDanger
+                    : ""
+                }
                 style={{
                   width: `${
-                    snapshot.drillJammed
-                      ? snapshot.repairProgress
-                      : 100 - snapshot.drillWear
+                    snapshot.activeHarvestTool === "drill"
+                      ? snapshot.drillJammed
+                        ? snapshot.repairProgress
+                        : 100 - snapshot.drillWear
+                      : 100
                   }%`,
                 }}
               />
+            </div>
+            <div className={styles.utilityToolStatus}>
+              <span>FIELD KIT TAB / WHEEL</span>
+              <strong>DRILL · CORER · SIPHON</strong>
             </div>
             <div className={styles.suitLabel}>
               <span>{snapshot.downed ? "SUIT SAFE MODE" : "SUIT INTEGRITY"}</span>
@@ -5169,7 +5486,8 @@ export function MoonGoonsGame() {
               <span><kbd>A</kbd> HOP / BOOST</span>
               <span><kbd>X</kbd> USE / CARGO</span>
               <span><kbd>Y</kbd> SCAN</span>
-              <span><kbd>RT</kbd> DRILL</span>
+              <span><kbd>RT</kbd> USE TOOL</span>
+              <span><kbd>VIEW</kbd> CYCLE TOOL</span>
               <span><kbd>LB</kbd> TETHER</span>
               <span><kbd>LS</kbd> CART</span>
               <span><kbd>LT</kbd> MAGNET</span>
@@ -5205,7 +5523,11 @@ export function MoonGoonsGame() {
             </div>
             <div>
               <kbd>F</kbd>
-              <span>HOLD TO DRILL</span>
+              <span>HOLD TO USE TOOL</span>
+            </div>
+            <div>
+              <kbd>TAB / WHEEL</kbd>
+              <span>CYCLE FIELD TOOL</span>
             </div>
             <div>
               <kbd>R</kbd>

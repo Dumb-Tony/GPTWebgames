@@ -6,6 +6,8 @@ export const CREW_INPUT_DRILL = 1 << 0;
 export const CREW_INPUT_MOVING = 1 << 1;
 export const CREW_INPUT_THRUSTER = 1 << 2;
 export const CREW_INPUT_DOWNED = 1 << 3;
+export const CREW_INPUT_TOOL_CORER = 1 << 4;
+export const CREW_INPUT_TOOL_SIPHON = 1 << 5;
 
 export const CREW_COLORS = [
   { name: "SOLAR YELLOW", hex: 0xffd85a, css: "#ffd85a" },
@@ -160,7 +162,7 @@ export function clampCrewTransform(presence: Partial<CrewLocalPresence>) {
     y: clamp(finite(presence.y), 0, 24),
     z: clamp(finite(presence.z), -48, 48),
     yaw: Math.atan2(Math.sin(yaw), Math.cos(yaw)),
-    inputMask: Math.max(0, Math.min(15, Math.trunc(finite(presence.inputMask)))),
+    inputMask: Math.max(0, Math.min(63, Math.trunc(finite(presence.inputMask)))),
   } satisfies CrewLocalPresence;
 }
 

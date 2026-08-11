@@ -37,9 +37,9 @@ export const GUIDE_STEPS: MissionGuideStep[] = [
     id: "drill",
     number: 3,
     label: "EXTRACT THE SAMPLE",
-    keyboard: "HOLD F",
-    controller: "HOLD RIGHT TRIGGER",
-    detail: "Stand near a beacon and drill. Stop before the tool cooks or jams.",
+    keyboard: "TAB TO SELECT · HOLD F",
+    controller: "VIEW TO SELECT · HOLD RIGHT TRIGGER",
+    detail: "Match the drill, corer, or siphon to the sample, then operate the tool near its beacon.",
   },
   {
     id: "carry",
