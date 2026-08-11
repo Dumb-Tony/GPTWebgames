@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 027: a spectral-identification and harvesting-feedback pass layered onto the three-tool field kit, cargo-cart logistics, and Vertical Slice Polish work introduced in Builds 021–026.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 028: a HUD and operations-menu cleanup layered onto the three-tool field kit, cargo-cart logistics, and Vertical Slice Polish work introduced in Builds 021–027.
 
 ## Playable build
 
@@ -146,7 +146,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 027 continues Milestone 9: Vertical Slice Polish by making the Build 026 field kit readable before and during extraction. Revealed deposits now show floating method tags: coral drill bits for metals, yellow core heads for glass and fossils, and cyan transfer rings for pressurized samples. Scanner telemetry identifies the nearest material and required tool at range, while drilling, coring, and siphoning drive distinct beacon/ring pulses. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 028 continues Milestone 9: Vertical Slice Polish by reducing persistent HUD noise and reorganizing the shipboard interface. Mouse-lock instructions now disappear after capture, field controls use one compact reference strip, and notes/settings access has moved clear of the tool readout. The operations terminal now separates Contracts, Equipment, Crew Link, and Maintenance into focused tabs, while Control Tuning groups input and accessibility options into readable sections. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
 
 ## Design references
 

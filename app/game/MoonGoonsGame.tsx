@@ -98,6 +98,18 @@ const HUB_STATION_HEADINGS: Record<HubStationId, string> = {
   crew: "CREW LINK UPLINK",
   maintenance: "MAINTENANCE BENCH",
 };
+const HUB_STATION_COPY: Record<HubStationId, string> = {
+  contracts: "Choose the shift profile and review which destinations your research has uncovered.",
+  equipment: "Buy field modules, install up to two, and review the company-minimum loadout.",
+  crew: "Start solo, create a Crew Link room, or join a friend's shared mission.",
+  maintenance: "Review repair policy, recovery wages, and the cost of previous safety decisions.",
+};
+const HUB_STATION_ORDER: HubStationId[] = [
+  "contracts",
+  "equipment",
+  "crew",
+  "maintenance",
+];
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
@@ -5263,7 +5275,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 027 // SPECTRAL TAGS</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 028 // CLEAN CONSOLE</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -5307,32 +5319,22 @@ export function MoonGoonsGame() {
               }}
             />
           )}
-          <div
-            className={`${styles.mouseCapture} ${
-              mouseCaptured ? styles.mouseCaptureActive : ""
-            }`}
-          >
-            <span>
-              {controllerConnected
-                ? "CONTROLLER ONLINE"
-                : mouseCaptured
-                ? "MOUSE LOCKED TO CENTER"
-                : mouseLockIssue === "unsupported"
+          {!mouseCaptured && !controllerConnected && (
+            <div className={styles.mouseCapture}>
+              <span>
+                {mouseLockIssue === "unsupported"
                   ? "MOUSE LOCK UNAVAILABLE IN THIS PREVIEW"
                   : mouseLockIssue === "blocked"
                     ? "MOUSE LOCK BLOCKED BY THIS BROWSER"
                     : "CLICK VIEW TO LOCK MOUSE"}
-            </span>
-            <small>
-              {controllerConnected
-                ? "LEFT STICK MOVE · RIGHT STICK LOOK · START SETTINGS"
-                : mouseCaptured
-                ? "ESC TO RELEASE"
-                : mouseLockIssue === "unsupported" || mouseLockIssue === "blocked"
+              </span>
+              <small>
+                {mouseLockIssue === "unsupported" || mouseLockIssue === "blocked"
                   ? "OPEN THE PUBLIC LINK IN CHROME OR EDGE OUTSIDE CODEX"
                   : "CENTERED MOUSE CAPTURE IS REQUIRED FOR TURNING"}
-            </small>
-          </div>
+              </small>
+            </div>
+          )}
           <div
             className={`${styles.crosshair} ${
               mouseCaptured ? styles.crosshairActive : ""
@@ -5584,17 +5586,13 @@ export function MoonGoonsGame() {
 
           {controllerConnected && (
             <div className={styles.controllerControls} aria-label="Controller controls">
+              <span className={styles.controlsLabel}>FIELD CONTROLS</span>
+              <span><kbd>STICKS</kbd> MOVE / LOOK</span>
               <span><kbd>A</kbd> HOP / BOOST</span>
               <span><kbd>X</kbd> USE / CARGO</span>
-              <span><kbd>Y</kbd> SCAN</span>
               <span><kbd>RT</kbd> USE TOOL</span>
               <span><kbd>VIEW</kbd> CYCLE TOOL</span>
-              <span><kbd>LB</kbd> TETHER</span>
-              <span><kbd>LS</kbd> CART</span>
-              <span><kbd>LT</kbd> MAGNET</span>
-              <span><kbd>RS</kbd> FOAM</span>
-              <span><kbd>RB</kbd> THROW</span>
-              <span><kbd>B</kbd> REPAIR</span>
+              <span><kbd>START</kbd> MENU</span>
             </div>
           )}
 
@@ -5602,13 +5600,10 @@ export function MoonGoonsGame() {
             className={`${styles.controls} ${controllerConnected ? styles.keyboardControlsDimmed : ""}`}
             aria-label="Keyboard controls"
           >
+            <span className={styles.controlsLabel}>FIELD CONTROLS</span>
             <div>
-              <kbd>W / S</kbd>
-              <span>FORWARD / REVERSE</span>
-            </div>
-            <div>
-              <kbd>A / D</kbd>
-              <span>STRAFE</span>
+              <kbd>WASD</kbd>
+              <span>MOVE</span>
             </div>
             <div>
               <kbd>MOUSE</kbd>
@@ -5619,52 +5614,20 @@ export function MoonGoonsGame() {
               <span>HOP / HOLD BOOST</span>
             </div>
             <div>
-              <kbd>Q</kbd>
-              <span>SCAN</span>
-            </div>
-            <div>
               <kbd>F</kbd>
-              <span>HOLD TO USE TOOL</span>
+              <span>USE TOOL</span>
             </div>
             <div>
               <kbd>TAB / WHEEL</kbd>
-              <span>CYCLE FIELD TOOL</span>
+              <span>CYCLE KIT</span>
             </div>
-            <div>
-              <kbd>R</kbd>
-              <span>REPAIR JAM</span>
-            </div>
-            <div>
-              <kbd>T</kbd>
-              <span>TETHER / RELEASE</span>
-            </div>
-            <div>
-              <kbd>H</kbd>
-              <span>HITCH / RELEASE CART</span>
-            </div>
-            <div>
-              <kbd>G</kbd>
-              <span>MAGNETIC RETRIEVER</span>
-            </div>
-            <div>
-              <kbd>C</kbd>
-              <span>STABILIZE SAMPLE</span>
-            </div>
-            {crewSession && (
-              <>
-                <div>
-                  <kbd>P</kbd>
-                  <span>LOCATION PING</span>
-                </div>
-                <div>
-                  <kbd>1–4</kbd>
-                  <span>HELP / CARGO / DANGER / SHIP</span>
-                </div>
-              </>
-            )}
             <div>
               <kbd>E / ⇧E</kbd>
               <span>USE / THROW</span>
+            </div>
+            <div>
+              <kbd>Q</kbd>
+              <span>SCAN</span>
             </div>
           </div>
 
@@ -5708,38 +5671,48 @@ export function MoonGoonsGame() {
               <span>S.P.A.C.E.</span>
               {HUB_STATION_HEADINGS[hubStation]} {"// SHIPBOARD TERMINAL"}
             </div>
-            <p className={styles.kicker}>HUB + PROGRESSION 8B // PHYSICAL OPERATIONS DECK</p>
-            <h1>
-              FILE PAPERWORK.
-              <br />
-              <em>THEN PANIC.</em>
-            </h1>
-            <p className={styles.lede}>
-              Contract, equipment, crew, and maintenance records are available at every
-              station because S.P.A.C.E. purchased one software license and refuses to
-              buy another. Configure the run, then launch from Crew Link below.
-            </p>
-            <OperationsHub
-              progression={progression}
-              selectedContractId={selectedContractId}
-              contractLocked={crewSession?.role === "guest"}
-              onContractSelect={setSelectedContractId}
-              onPurchaseUpgrade={buyUpgrade}
-              onToggleUpgrade={toggleUpgrade}
-            />
-            <CrewLobby
-              session={crewSession}
-              room={crewRoom}
-              busy={crewBusy}
-              error={crewError}
-              tuning={crewNetworkTuning}
-              onTuningChange={setCrewNetworkTuning}
-              onCreate={(name) => void connectCrew("create", name)}
-              onJoin={(name, code) => void connectCrew("join", name, code)}
-              onLeave={leaveCrew}
-              onLaunch={resetMission}
-              onSolo={resetMission}
-            />
+            <nav className={styles.terminalNav} aria-label="Operations terminal sections">
+              {HUB_STATION_ORDER.map((station) => (
+                <button
+                  key={station}
+                  type="button"
+                  data-active={hubStation === station || undefined}
+                  onClick={() => setHubStation(station)}
+                >
+                  {HUB_STATION_HEADINGS[station]}
+                </button>
+              ))}
+            </nav>
+            <div className={styles.terminalIntro}>
+              <p className={styles.kicker}>SHIPBOARD OPERATIONS // {hubStation.toUpperCase()}</p>
+              <h1>{HUB_STATION_HEADINGS[hubStation]}</h1>
+              <p className={styles.lede}>{HUB_STATION_COPY[hubStation]}</p>
+            </div>
+            {hubStation === "crew" ? (
+              <CrewLobby
+                session={crewSession}
+                room={crewRoom}
+                busy={crewBusy}
+                error={crewError}
+                tuning={crewNetworkTuning}
+                onTuningChange={setCrewNetworkTuning}
+                onCreate={(name) => void connectCrew("create", name)}
+                onJoin={(name, code) => void connectCrew("join", name, code)}
+                onLeave={leaveCrew}
+                onLaunch={resetMission}
+                onSolo={resetMission}
+              />
+            ) : (
+              <OperationsHub
+                activeStation={hubStation}
+                progression={progression}
+                selectedContractId={selectedContractId}
+                contractLocked={crewSession?.role === "guest"}
+                onContractSelect={setSelectedContractId}
+                onPurchaseUpgrade={buyUpgrade}
+                onToggleUpgrade={toggleUpgrade}
+              />
+            )}
             <small>
               Personal career data stays on this device · Crew mission data is shared
             </small>

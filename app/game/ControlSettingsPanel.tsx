@@ -64,6 +64,11 @@ export function ControlSettingsPanel({
           </p>
 
           <div className={styles.settingsBody}>
+            <section className={styles.settingsGroup}>
+              <header className={styles.settingsGroupTitle}>
+                <span>01</span>
+                <strong>INPUT + FEEDBACK</strong>
+              </header>
             <label className={styles.rangeSetting}>
               <span>
                 LOOK SENSITIVITY
@@ -142,6 +147,13 @@ export function ControlSettingsPanel({
               <small>Scales mission instruments and instructional overlays.</small>
             </label>
 
+            </section>
+            <section className={styles.settingsGroup}>
+              <header className={styles.settingsGroupTitle}>
+                <span>02</span>
+                <strong>DISPLAY + ACCESSIBILITY</strong>
+              </header>
+
             <label className={styles.selectSetting}>
               <span>
                 <strong>RENDER QUALITY</strong>
@@ -184,6 +196,7 @@ export function ControlSettingsPanel({
                 onChange={(event) => update({ missionGuide: event.target.checked })}
               />
             </label>
+            </section>
           </div>
 
           <footer className={styles.settingsFooter}>

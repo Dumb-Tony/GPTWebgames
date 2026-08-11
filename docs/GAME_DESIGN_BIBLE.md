@@ -2372,6 +2372,17 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Added extraction-response pulses to deposit rings and method markers, with strong discrete
   impacts for coring and smoother continuous feedback for drilling and siphon flow.
 
+**Prototype status — Build 028 clean console**
+
+- Removed the persistent pointer-lock status banner after mouse capture; the instruction now
+  appears only when the mission or orbital deck is waiting for mouse input.
+- Consolidated the mission control legend into a compact field-controls strip and repositioned
+  secondary notes/settings access so it no longer competes with the active tool readout.
+- Rebuilt the shipboard terminal around focused Contracts, Equipment, Crew Link, and Maintenance
+  tabs, and grouped Control Tuning into clear input/feedback and display/accessibility sections.
+- Added responsive two-column terminal navigation and single-column maintenance summaries for
+  narrow displays.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

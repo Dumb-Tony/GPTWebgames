@@ -661,20 +661,12 @@ export function OrbitalHub({
           </span>
         ))}
       </div>
-      <div className={styles.hubWalkControls}>
-        <span>
-          {controllerConnected
-            ? "CONTROLLER ONLINE · NO MOUSE LOCK REQUIRED"
-            : mouseCaptured
-              ? "MOUSE LOCKED · ESC RELEASES"
-              : "CLICK DECK TO LOCK MOUSE"}
-        </span>
-        <small>
-          {controllerConnected
-            ? "LEFT STICK MOVE · RIGHT STICK LOOK · X / SQUARE USE"
-            : "W/S MOVE · A/D STRAFE · MOUSE LOOK · E USE"}
-        </small>
-      </div>
+      {!mouseCaptured && !controllerConnected && (
+        <div className={styles.hubWalkControls}>
+          <span>CLICK DECK TO LOCK MOUSE</span>
+          <small>W/S MOVE · A/D STRAFE · MOUSE LOOK · E USE</small>
+        </div>
+      )}
       <div className={`${styles.hubInteract} ${nearestStation ? styles.hubInteractReady : ""}`}>
         {nearestStation ? (
           <>
