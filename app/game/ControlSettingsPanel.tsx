@@ -101,7 +101,7 @@ export function ControlSettingsPanel({
 
             <label className={styles.rangeSetting}>
               <span>
-                EFFECTS VOLUME
+                MISSION AUDIO
                 <output>{Math.round(settings.volume * 100)}%</output>
               </span>
               <input
@@ -112,7 +112,7 @@ export function ControlSettingsPanel({
                 value={settings.volume}
                 onChange={(event) => update({ volume: Number(event.target.value) })}
               />
-              <small>Controls scanner, tool, hazard, impact, and suit feedback.</small>
+              <small>Controls ambience, scanner, tools, hazards, impacts, and suit feedback.</small>
             </label>
 
             <label className={styles.rangeSetting}>

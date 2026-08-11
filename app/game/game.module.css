@@ -8,6 +8,32 @@
   color: var(--ink);
 }
 
+.shell[data-destination="rust_belt"] {
+  --cyan: #ffad73;
+  --yellow: #ffd56a;
+  --orange: #ff7d58;
+  --green: #d8d27a;
+  background: #0e080b;
+}
+
+.shell[data-destination="rust_belt"] .topbar {
+  background:
+    linear-gradient(90deg, rgba(232, 103, 62, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(12, 6, 10, 0.96), transparent);
+}
+
+.shell[data-destination="rust_belt"] .missionPanel,
+.shell[data-destination="rust_belt"] .toolPanel,
+.shell[data-destination="rust_belt"] .radio,
+.shell[data-destination="rust_belt"] .controls {
+  border-color: rgba(255, 164, 104, 0.34);
+  background: rgba(20, 9, 13, 0.9);
+}
+
+.shell[data-destination="rust_belt"] .brandMark {
+  box-shadow: inset 0 0 0 4px rgba(255, 173, 115, 0.12), 0 0 24px rgba(255, 125, 88, 0.12);
+}
+
 .shell::after {
   position: absolute;
   inset: 0;
@@ -1863,23 +1889,58 @@
   box-shadow: inset 0 0 0 1px rgba(255, 216, 90, 0.16);
 }
 
-.destinationCards > div {
+.destinationCards > div,
+.operationsHub .destinationCards > button {
   display: grid;
   gap: 4px;
   padding: 10px;
+  min-height: 94px;
+  margin: 0;
+  border: 0;
   border-left: 2px solid #3b4256;
   background: #111727;
+  color: var(--ink);
+  clip-path: none;
+  box-shadow: none;
+  font-family: inherit;
+  text-align: left;
+  transform: none;
   opacity: 0.56;
+}
+
+.operationsHub .destinationCards > button:hover:not(:disabled) {
+  border-left-color: var(--yellow);
+  background: #192239;
+  transform: translateX(2px);
+}
+
+.operationsHub .destinationCards > button:disabled {
+  cursor: not-allowed;
+}
+
+.destinationCards p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.35;
 }
 
 .destinationCards .destinationActive {
   border-left-color: var(--green);
+  background:
+    linear-gradient(90deg, rgba(142, 224, 125, 0.13), transparent 52%),
+    #111727;
+  box-shadow: inset 0 0 0 1px rgba(142, 224, 125, 0.12);
   opacity: 1;
 }
 
 .destinationCards .destinationSurveyed {
   border-left-color: var(--cyan);
   opacity: 0.82;
+}
+
+.destinationCards .destinationLocked {
+  opacity: 0.42;
 }
 
 .upgradeCards {

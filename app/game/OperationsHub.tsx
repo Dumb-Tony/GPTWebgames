@@ -3,6 +3,8 @@
 import {
   CONTRACT_IDS,
   CONTRACTS,
+  DESTINATION_IDS,
+  DESTINATIONS,
   MAX_EQUIPPED_UPGRADES,
   UPGRADE_IDS,
   UPGRADES,
@@ -29,6 +31,11 @@ export function OperationsHub({
   onPurchaseUpgrade: (upgradeId: UpgradeId) => void;
   onToggleUpgrade: (upgradeId: UpgradeId) => void;
 }) {
+  const selectedDestinationId = CONTRACTS[selectedContractId].destinationId;
+  const availableContracts = CONTRACT_IDS.filter(
+    (contractId) => CONTRACTS[contractId].destinationId === selectedDestinationId,
+  );
+
   return (
     <section className={styles.operationsHub} aria-label="S.P.A.C.E. operations hub">
       <header className={styles.hubHeader}>
@@ -50,11 +57,46 @@ export function OperationsHub({
         <div className={styles.hubColumns}>
           <div className={styles.hubSection}>
             <div className={styles.hubSectionTitle}>
-              <span>01 // CONTRACT BOARD</span>
-              <small>{contractLocked ? "MISSION LEAD SELECTS" : "CHOOSE ONE"}</small>
+              <span>01 // DESTINATION CONTROL</span>
+              <small>{contractLocked ? "MISSION LEAD SELECTS" : "SELECT FLIGHT PLAN"}</small>
+            </div>
+            <div className={styles.destinationCards}>
+              {DESTINATION_IDS.map((destinationId) => {
+                const destination = DESTINATIONS[destinationId];
+                const selected = selectedDestinationId === destinationId;
+                const unlocked = progression.research >= destination.unlockResearch;
+                return (
+                  <button
+                    key={destination.id}
+                    type="button"
+                    className={selected ? styles.destinationActive : styles.destinationSurveyed}
+                    onClick={() => onContractSelect(destination.defaultContractId)}
+                    disabled={contractLocked || !unlocked}
+                    aria-pressed={selected}
+                  >
+                    <span>{`${destination.code} // ${destination.classification}`}</span>
+                    <strong>{destination.name}</strong>
+                    <p>{destination.description}</p>
+                    <small>{unlocked ? `OPEN · ${destination.hazard}` : `LOCKED · ${destination.unlockResearch} RESEARCH`}</small>
+                  </button>
+                );
+              })}
+              <div className={styles.destinationLocked}>
+                <span>IC-03 // COMETARY BODY</span>
+                <strong>Icebox Comet</strong>
+                <p>Frozen tunnels, geysers, and samples that resent room temperature.</p>
+                <small>ROUTE DATA INCOMPLETE · 18 RESEARCH</small>
+              </div>
+            </div>
+          </div>
+
+          <div className={styles.hubSection}>
+            <div className={styles.hubSectionTitle}>
+              <span>02 // {DESTINATIONS[selectedDestinationId].code} CONTRACT BOARD</span>
+              <small>{contractLocked ? "MISSION LEAD SELECTS" : "CHOOSE SHIFT"}</small>
             </div>
             <div className={styles.contractCards}>
-              {CONTRACT_IDS.map((contractId) => {
+              {availableContracts.map((contractId) => {
                 const contract = CONTRACTS[contractId];
                 const selected = selectedContractId === contractId;
                 return (
@@ -77,38 +119,6 @@ export function OperationsHub({
                   </button>
                 );
               })}
-            </div>
-          </div>
-
-          <div className={styles.hubSection}>
-            <div className={styles.hubSectionTitle}>
-              <span>02 // DESTINATION DOSSIERS</span>
-              <small>RESEARCH UNLOCKS</small>
-            </div>
-            <div className={styles.destinationCards}>
-              <div className={styles.destinationActive}>
-                <span>PM-01</span>
-                <strong>THE PRACTICE MOON</strong>
-                <small>OPEN · LOW GRAVITY · POOR SUPERVISION</small>
-              </div>
-              <div className={progression.research >= 8 ? styles.destinationSurveyed : ""}>
-                <span>RB-02</span>
-                <strong>THE RUST BELT</strong>
-                <small>
-                  {progression.research >= 8
-                    ? "SURVEYED · EXPEDITION PENDING"
-                    : "LOCKED · 8 RESEARCH"}
-                </small>
-              </div>
-              <div className={progression.research >= 18 ? styles.destinationSurveyed : ""}>
-                <span>IC-03</span>
-                <strong>ICEBOX COMET</strong>
-                <small>
-                  {progression.research >= 18
-                    ? "SURVEYED · EXPEDITION PENDING"
-                    : "LOCKED · 18 RESEARCH"}
-                </small>
-              </div>
             </div>
           </div>
         </div>

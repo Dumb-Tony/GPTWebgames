@@ -48,7 +48,9 @@ import {
   normalizeRoomCode,
 } from "../app/game/crewNetwork.ts";
 import {
+  CONTRACTS,
   DEFAULT_PROGRESSION,
+  DESTINATIONS,
   calculateMissionSettlement,
   normalizeProgressionSave,
   purchaseUpgrade,
@@ -218,6 +220,19 @@ test("mission generation is deterministic, varied, unique, and completable", () 
       ["ferric", "ferric", "fossil", "glass", "helium", "platinum", "vial"],
     );
   }
+});
+
+test("the Rust Belt has a distinct, completable mineral survey", () => {
+  const rustSurvey = createMissionDepositDefinitions(12013, "rust_belt");
+  assert.equal(rustSurvey.length, 8);
+  assert.equal(new Set(rustSurvey.map(({ position }) => position.join(","))).size, 8);
+  assert.ok(missionMaximumValue(rustSurvey) >= CONTRACTS.rust_belt_salvage.target);
+  assert.deepEqual(
+    rustSurvey.map(({ kind }) => kind).sort(),
+    ["ferric", "ferric", "ferric", "glass", "helium", "helium", "platinum", "platinum"],
+  );
+  assert.equal(CONTRACTS.rust_belt_salvage.destinationId, "rust_belt");
+  assert.ok(DESTINATIONS.rust_belt.gravity < DESTINATIONS.practice_moon.gravity);
 });
 
 test("seeded random accepts awkward seeds and stays in range", () => {

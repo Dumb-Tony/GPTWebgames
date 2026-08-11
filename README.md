@@ -2,13 +2,15 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 028: a HUD and operations-menu cleanup layered onto the three-tool field kit, cargo-cart logistics, and Vertical Slice Polish work introduced in Builds 021–027.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 029: the first playable Rust Belt expedition and a retro-NASA visual/audio pass layered onto the three-tool field kit, cargo-cart logistics, and vertical-slice work introduced in Builds 021–028.
 
 ## Playable build
 
 The first prototype includes:
 
 - Third-person low-gravity movement and moon hopping
+- Two selectable destinations: the Practice Moon and metallic Rust Belt asteroid
+- Destination-specific gravity, terrain, hazards, mineral mixes, lighting, and ambience
 - A limited EVA micro-thruster for extending jumps and correcting bad decisions
 - A real-time low-poly 3D moon, astronaut, landing ship, rover, drill, and cargo
 - Dynamic lighting, shadows, emissive equipment, starfield, fog, lunar dust, and procedural surface/material textures
@@ -146,7 +148,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 028 continues Milestone 9: Vertical Slice Polish by reducing persistent HUD noise and reorganizing the shipboard interface. Mouse-lock instructions now disappear after capture, field controls use one compact reference strip, and notes/settings access has moved clear of the tool readout. The operations terminal now separates Contracts, Equipment, Crew Link, and Maintenance into focused tabs, while Control Tuning groups input and accessibility options into readable sections. Remaining Milestone 9 work includes remappable action bindings, broader accessibility auditing, representative music and environmental audio, and measured hardware compatibility passes.
+Build 029 begins Milestone 10: Content Pipeline with a playable second destination. The Rust Belt introduces weaker gravity, iron-heavy survey manifests, two contracts, metallic terrain, drifting orbital scrap, earlier debris convergence, and periodic polarity surges that pull loose magnetic cargo and unattended loaded carts. A retro-NASA presentation pass adds labeled ship/cart hardware, warmer industrial lighting, destination telemetry, new tool cues, and separate Practice Moon and Rust Belt ambient soundscapes. Remaining work includes deeper destination events, new Rust Belt-exclusive resources, remappable action bindings, broader accessibility auditing, and measured hardware compatibility passes.
 
 ## Design references
 

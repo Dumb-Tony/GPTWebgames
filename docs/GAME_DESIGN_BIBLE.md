@@ -2383,6 +2383,21 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Added responsive two-column terminal navigation and single-column maintenance summaries for
   narrow displays.
 
+**Prototype status — Build 029 Rust Belt survey**
+
+- Added the first playable second destination with dedicated contracts, deterministic mineral
+  manifests, weaker gravity, iron-rich terrain, floating scrap, warmer lighting, and a distinct
+  planetary backdrop.
+- Added periodic polarity surges that visibly energize the asteroid and pull loose magnetic
+  samples toward the field core. Unattended loaded carts also drift during an active surge.
+- Increased late-mission debris pressure on the Rust Belt without adding Practice Moon pressure
+  vents, preserving a different hazard identity for each destination.
+- Established a retro-NASA corporate layer through cream/orange hardware decals, serial labels,
+  destination telemetry, focused contract selection, richer tool cues, and destination-specific
+  procedural ambience.
+- Kept destination authority inside the selected contract so existing Crew Link missions share
+  the same world, gravity profile, deposit set, hazards, and payout rules without a new room field.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

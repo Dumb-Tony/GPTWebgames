@@ -67,6 +67,7 @@ import {
 } from "./gameRules";
 import {
   CONTRACTS,
+  DESTINATIONS,
   DEFAULT_PROGRESSION,
   calculateMissionSettlement,
   hasEquippedUpgrade,
@@ -74,13 +75,13 @@ import {
   purchaseUpgrade,
   toggleEquippedUpgrade,
   type ContractId,
+  type DestinationId,
   type ProgressionSave,
   type UpgradeId,
 } from "./progression";
 import styles from "./game.module.css";
 
 const MOON_RADIUS = 48;
-const MOON_GRAVITY = 4.35;
 const JUMP_VELOCITY = 6.1;
 const INITIAL_MISSION_SEED = 12013;
 const INITIAL_MESSAGE = "Awaiting a legally sufficient level of consent.";
@@ -110,6 +111,12 @@ const HUB_STATION_ORDER: HubStationId[] = [
   "crew",
   "maintenance",
 ];
+
+function normalizeContractId(value: unknown): ContractId {
+  return typeof value === "string" && value in CONTRACTS
+    ? (value as ContractId)
+    : "standard_procurement";
+}
 
 type Phase = "briefing" | "active" | "success" | "failed";
 type MouseLockIssue = "unsupported" | "blocked" | null;
@@ -283,6 +290,78 @@ function createMoonTexture() {
   return texture;
 }
 
+function createRustTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256;
+  canvas.height = 256;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+  const random = seededRandom(77221);
+  context.fillStyle = "#5d4038";
+  context.fillRect(0, 0, 256, 256);
+  for (let index = 0; index < 720; index += 1) {
+    const rust = 70 + Math.floor(random() * 88);
+    context.fillStyle = `rgba(${rust + 35}, ${Math.floor(rust * 0.58)}, ${Math.floor(
+      rust * 0.4,
+    )}, ${0.06 + random() * 0.24})`;
+    const radius = 0.5 + random() * (index % 31 === 0 ? 9 : 3.2);
+    context.beginPath();
+    context.arc(random() * 256, random() * 256, radius, 0, Math.PI * 2);
+    context.fill();
+  }
+  context.globalAlpha = 0.28;
+  context.strokeStyle = "#f1a56f";
+  context.lineWidth = 1;
+  for (let line = 0; line < 12; line += 1) {
+    context.beginPath();
+    context.moveTo(-20, line * 24 + random() * 18);
+    context.lineTo(276, line * 24 - 42 + random() * 24);
+    context.stroke();
+  }
+  context.globalAlpha = 1;
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(7, 7);
+  texture.anisotropy = 4;
+  return texture;
+}
+
+function createCorporateLabel(
+  title: string,
+  serial: string,
+  width = 2.5,
+  height = 0.72,
+) {
+  const canvas = document.createElement("canvas");
+  canvas.width = 512;
+  canvas.height = 144;
+  const context = canvas.getContext("2d");
+  if (!context) return new THREE.Group();
+  context.fillStyle = "#e9e4cd";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = "#182438";
+  context.fillRect(0, 0, 22, canvas.height);
+  context.fillStyle = "#e26f45";
+  context.fillRect(22, 0, 10, canvas.height);
+  context.fillStyle = "#182438";
+  context.font = "900 42px Arial";
+  context.fillText(title, 52, 62);
+  context.font = "700 21px monospace";
+  context.fillText(serial, 54, 104);
+  context.strokeStyle = "#182438";
+  context.lineWidth = 4;
+  context.strokeRect(2, 2, canvas.width - 4, canvas.height - 4);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  const label = new THREE.Mesh(
+    new THREE.PlaneGeometry(width, height),
+    new THREE.MeshBasicMaterial({ map: texture, side: THREE.DoubleSide }),
+  );
+  return label;
+}
+
 function createCargoTexture(kind: CargoKind) {
   const data = cargoData[kind];
   const canvas = document.createElement("canvas");
@@ -409,6 +488,15 @@ function createShip() {
   const yellowStripe = box([9.9, 0.65, 7.05], palette.yellow, [0, 3.12, 0]);
   yellowStripe.geometry.rotateY(Math.PI / 4);
   ship.add(yellowStripe);
+
+  const hullLabel = createCorporateLabel("S.P.A.C.E.", "PROCUREMENT VEHICLE · MG-03", 3.1, 0.86);
+  hullLabel.position.set(-0.35, 4.45, -3.48);
+  ship.add(hullLabel);
+
+  const bayLabel = createCorporateLabel("CARGO", "NO ORGANICS WITHOUT FORM 12-B", 2.25, 0.62);
+  bayLabel.position.set(4.75, 1.05, 3.35);
+  bayLabel.rotation.y = Math.PI / 2;
+  ship.add(bayLabel);
 
   const enginePositions: Array<[number, number, number]> = [
     [-3.5, 1.35, -2.8],
@@ -557,6 +645,9 @@ function createRover() {
     metalness: 0.35,
     roughness: 0.42,
   }));
+  const roverLabel = createCorporateLabel("FIELD CART", "PROPERTY OF EVERYONE / OWNED BY NO ONE", 2.65, 0.58);
+  roverLabel.position.set(0, 0.82, 1.34);
+  rover.add(roverLabel);
 
   const cargoBed = new THREE.Group();
   cargoBed.position.y = 1.32;
@@ -1125,6 +1216,152 @@ function createMoonSurface() {
   return surface;
 }
 
+function createRustSurface() {
+  const random = seededRandom(61403);
+  const geometry = new THREE.CircleGeometry(MOON_RADIUS, 96);
+  const position = geometry.attributes.position;
+  for (let index = 1; index < position.count; index += 1) {
+    const x = position.getX(index);
+    const y = position.getY(index);
+    const plate = Math.sin(x * 0.32) * 0.24 + Math.cos(y * 0.27) * 0.22;
+    const seam = Math.sin((x + y) * 0.61) * 0.12;
+    position.setZ(index, plate + seam + (random() - 0.5) * 0.38);
+  }
+  geometry.computeVertexNormals();
+  const surface = new THREE.Mesh(
+    geometry,
+    standardMaterial(0x67443a, {
+      map: createRustTexture(),
+      roughness: 0.82,
+      metalness: 0.34,
+    }),
+  );
+  surface.rotation.x = -Math.PI / 2;
+  surface.receiveShadow = true;
+  return surface;
+}
+
+function createRustBeltScenery() {
+  const scenery = new THREE.Group();
+  const random = seededRandom(22062);
+  for (let index = 0; index < 46; index += 1) {
+    const angle = (index / 46) * Math.PI * 2 + (random() - 0.5) * 0.14;
+    const distance = 41 + random() * 6;
+    const size = 1.8 + random() * 5.8;
+    const ridge = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(size, 0),
+      standardMaterial(index % 5 === 0 ? 0x7c4938 : 0x4d3434, {
+        color: index % 7 === 0 ? 0x86513c : undefined,
+        roughness: 0.88,
+        metalness: 0.28,
+      }),
+    );
+    ridge.position.set(
+      Math.cos(angle) * distance,
+      size * (0.45 + random() * 0.35) - 0.4,
+      Math.sin(angle) * distance,
+    );
+    ridge.scale.set(0.65 + random(), 0.8 + random() * 1.7, 0.65 + random());
+    ridge.rotation.set(random() * Math.PI, random() * Math.PI, random() * Math.PI);
+    ridge.castShadow = true;
+    ridge.receiveShadow = true;
+    scenery.add(ridge);
+  }
+
+  const trussMaterial = standardMaterial(0x9a785e, {
+    metalness: 0.72,
+    roughness: 0.42,
+  });
+  [-1, 1].forEach((side) => {
+    const tower = new THREE.Group();
+    tower.position.set(side * 27, 0, side * -15);
+    tower.rotation.z = side * 0.14;
+    for (let level = 0; level < 4; level += 1) {
+      const beam = new THREE.Mesh(new THREE.BoxGeometry(0.22, 5.4, 0.22), trussMaterial);
+      beam.position.set(side * 0.72, 2.6 + level * 3.6, 0);
+      beam.rotation.z = side * (level % 2 === 0 ? 0.22 : -0.22);
+      beam.castShadow = true;
+      tower.add(beam);
+    }
+    const warning = new THREE.PointLight(palette.coral, 8, 16, 2);
+    warning.position.set(0, 15.8, 0);
+    tower.add(warning);
+    scenery.add(tower);
+  });
+  return scenery;
+}
+
+function createFloatingRustDebris() {
+  const debris = new THREE.Group();
+  const random = seededRandom(8871);
+  for (let index = 0; index < 28; index += 1) {
+    const shape = index % 4 === 0
+      ? new THREE.BoxGeometry(0.8 + random() * 1.8, 0.18 + random() * 0.38, 0.6 + random() * 2.4)
+      : new THREE.DodecahedronGeometry(0.3 + random() * 1.25, 0);
+    const scrap = new THREE.Mesh(
+      shape,
+      standardMaterial(index % 3 === 0 ? 0xa65c3d : 0x5a4644, {
+        metalness: 0.58,
+        roughness: 0.56,
+      }),
+    );
+    const angle = random() * Math.PI * 2;
+    const radius = 13 + random() * 50;
+    scrap.position.set(Math.cos(angle) * radius, 7 + random() * 25, Math.sin(angle) * radius);
+    scrap.rotation.set(random() * 4, random() * 4, random() * 4);
+    scrap.userData.spin = new THREE.Vector3(
+      (random() - 0.5) * 0.36,
+      (random() - 0.5) * 0.42,
+      (random() - 0.5) * 0.32,
+    );
+    debris.add(scrap);
+  }
+  return debris;
+}
+
+function createMagneticField() {
+  const field = new THREE.Group();
+  field.position.set(7, 0.18, -7);
+  const arcs: THREE.Mesh[] = [];
+  for (let index = 0; index < 5; index += 1) {
+    const material = new THREE.MeshBasicMaterial({
+      color: index % 2 === 0 ? palette.coral : palette.yellow,
+      transparent: true,
+      opacity: 0.08,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const arc = new THREE.Mesh(
+      new THREE.TorusGeometry(4.4 + index * 1.45, 0.035 + index * 0.008, 6, 72),
+      material,
+    );
+    arc.rotation.set(Math.PI / 2 + index * 0.18, index * 0.37, index * 0.22);
+    arc.userData.baseOpacity = 0.05 + index * 0.018;
+    field.add(arc);
+    arcs.push(arc);
+  }
+  const core = new THREE.Mesh(
+    new THREE.IcosahedronGeometry(1.05, 1),
+    standardMaterial(0x2e2429, {
+      emissive: 0xb43e24,
+      emissiveIntensity: 1.4,
+      metalness: 0.82,
+      roughness: 0.3,
+    }),
+  );
+  core.position.y = 0.9;
+  field.add(core);
+  const light = new THREE.PointLight(palette.coral, 2, 24, 2);
+  light.position.y = 2;
+  field.add(light);
+  field.userData.arcs = arcs;
+  field.userData.core = core;
+  field.userData.light = light;
+  field.userData.active = false;
+  field.userData.warning = false;
+  return field;
+}
+
 function createStars() {
   const random = seededRandom(66);
   const positions = new Float32Array(900 * 3);
@@ -1226,7 +1463,7 @@ function createMeteorStreaks() {
   return streaks;
 }
 
-function createMeteorHazards(scene: THREE.Scene) {
+function createMeteorHazards(parent: THREE.Object3D) {
   return Array.from({ length: 4 }, () => {
     const group = new THREE.Group();
     group.visible = false;
@@ -1289,7 +1526,7 @@ function createMeteorHazards(scene: THREE.Scene) {
     light.position.y = 1;
     group.add(light);
 
-    scene.add(group);
+    parent.add(group);
     return {
       group,
       marker,
@@ -1385,15 +1622,28 @@ function createCrater(x: number, z: number, radius: number) {
   return crater;
 }
 
-function createWorld(scene: THREE.Scene) {
-  scene.add(createMoonSurface());
-  scene.add(createStars());
-  scene.add(createDust());
-  scene.add(createHorizonRidges());
-  scene.add(createCrater(-6, -2, 4.5));
-  scene.add(createCrater(13, -15, 5.8));
-  scene.add(createCrater(22, 13, 4));
-  scene.add(createCrater(-28, -14, 6.2));
+function createWorld(scene: THREE.Scene, destinationId: DestinationId) {
+  const root = new THREE.Group();
+  root.name = `destination-${destinationId}`;
+  scene.add(root);
+  root.add(destinationId === "rust_belt" ? createRustSurface() : createMoonSurface());
+  root.add(createStars());
+  root.add(destinationId === "rust_belt" ? createRustBeltScenery() : createHorizonRidges());
+  const dust = createDust();
+  if (destinationId === "rust_belt") {
+    (dust.material as THREE.PointsMaterial).color.setHex(0xd88d67);
+    (dust.material as THREE.PointsMaterial).opacity = 0.3;
+  }
+  root.add(dust);
+  if (destinationId === "practice_moon") {
+    root.add(createCrater(-6, -2, 4.5));
+    root.add(createCrater(13, -15, 5.8));
+    root.add(createCrater(22, 13, 4));
+    root.add(createCrater(-28, -14, 6.2));
+  } else {
+    root.add(createCrater(-5, -3, 3.4));
+    root.add(createCrater(19, -18, 4.7));
+  }
 
   const random = seededRandom(982);
   for (let index = 0; index < 82; index += 1) {
@@ -1402,52 +1652,73 @@ function createWorld(scene: THREE.Scene) {
     const size = 0.12 + random() * 0.66;
     const rock = new THREE.Mesh(
       new THREE.DodecahedronGeometry(size, 0),
-      standardMaterial(index % 5 === 0 ? 0x343744 : 0x555864, { roughness: 1 }),
+      standardMaterial(
+        destinationId === "rust_belt"
+          ? index % 5 === 0
+            ? 0x9a5337
+            : 0x5f403a
+          : index % 5 === 0
+            ? 0x343744
+            : 0x555864,
+        {
+          roughness: destinationId === "rust_belt" ? 0.78 : 1,
+          metalness: destinationId === "rust_belt" ? 0.32 : 0,
+        },
+      ),
     );
     rock.position.set(Math.cos(angle) * radius, size * 0.42, Math.sin(angle) * radius);
     rock.rotation.set(random() * 2, random() * 2, random() * 2);
     rock.scale.y = 0.65 + random() * 0.5;
     rock.castShadow = true;
     rock.receiveShadow = true;
-    scene.add(rock);
+    root.add(rock);
   }
 
   const ship = createShip();
   const cargoReceiver = createCargoReceiver();
   const rover = createRover();
   const meteorStreaks = createMeteorStreaks();
-  const meteorHazards = createMeteorHazards(scene);
-  const pressureVents = createPressureVents();
-  scene.add(ship);
-  scene.add(cargoReceiver);
-  scene.add(rover);
-  scene.add(meteorStreaks);
-  pressureVents.forEach((vent) => scene.add(vent));
+  const meteorHazards = createMeteorHazards(root);
+  const pressureVents = destinationId === "practice_moon" ? createPressureVents() : [];
+  const floatingDebris = destinationId === "rust_belt" ? createFloatingRustDebris() : new THREE.Group();
+  const magneticField = destinationId === "rust_belt" ? createMagneticField() : new THREE.Group();
+  root.add(ship);
+  root.add(cargoReceiver);
+  root.add(rover);
+  root.add(meteorStreaks);
+  root.add(floatingDebris);
+  root.add(magneticField);
+  pressureVents.forEach((vent) => root.add(vent));
 
   const earth = new THREE.Mesh(
     new THREE.SphereGeometry(7, 28, 20),
-    standardMaterial(0x315c83, {
-      emissive: 0x102a45,
-      emissiveIntensity: 0.75,
+    standardMaterial(destinationId === "rust_belt" ? 0x6f2b28 : 0x315c83, {
+      emissive: destinationId === "rust_belt" ? 0x3f1217 : 0x102a45,
+      emissiveIntensity: destinationId === "rust_belt" ? 1.15 : 0.75,
       roughness: 0.86,
     }),
   );
-  earth.position.set(62, 48, -92);
-  scene.add(earth);
+  earth.scale.setScalar(destinationId === "rust_belt" ? 1.7 : 1);
+  earth.position.set(62, destinationId === "rust_belt" ? 42 : 48, -92);
+  root.add(earth);
 
   const earthCloud = new THREE.Mesh(
     new THREE.SphereGeometry(7.08, 22, 16),
     new THREE.MeshBasicMaterial({
-      color: 0xa8d9dc,
+      color: destinationId === "rust_belt" ? 0xff9b68 : 0xa8d9dc,
       transparent: true,
       opacity: 0.18,
       wireframe: true,
     }),
   );
   earthCloud.position.copy(earth.position);
-  scene.add(earthCloud);
+  earthCloud.scale.copy(earth.scale);
+  root.add(earthCloud);
 
   return {
+    root,
+    destinationId,
+    gravity: DESTINATIONS[destinationId].gravity,
     ship,
     cargoReceiver,
     rover,
@@ -1456,16 +1727,20 @@ function createWorld(scene: THREE.Scene) {
     meteorStreaks,
     meteorHazards,
     pressureVents,
+    floatingDebris,
+    magneticField,
   };
 }
 
 export function MoonGoonsGame() {
   const mountRef = useRef<HTMLDivElement>(null);
+  const ambienceRef = useRef<AudioContext | null>(null);
   const pointerTargetRef = useRef<HTMLCanvasElement | null>(null);
   const keysRef = useRef(new Set<string>());
   const phaseRef = useRef<Phase>("briefing");
   const missionSeedRef = useRef(INITIAL_MISSION_SEED);
   const activeContractIdRef = useRef<ContractId>("standard_procurement");
+  const activeDestinationRef = useRef<DestinationId>("practice_moon");
   const missionRunIdRef = useRef(0);
   const settledRunIdRef = useRef(-1);
   const timeRef = useRef(MISSION_SECONDS);
@@ -1878,7 +2153,10 @@ export function MoonGoonsGame() {
         | "bounce"
         | "break"
         | "step"
-        | "repair",
+        | "repair"
+        | "storm"
+        | "drill"
+        | "siphon",
     ) => {
       try {
         const volume = controlSettingsRef.current.volume;
@@ -1902,17 +2180,28 @@ export function MoonGoonsGame() {
           break: [640, 88, 0.42],
           step: [92, 72, 0.055],
           repair: [125, 540, 0.14],
+          storm: [74, 510, 0.72],
+          drill: [118, 86, 0.34],
+          siphon: [210, 470, 0.28],
         }[tone];
         oscillator.type =
-          tone === "warning" || tone === "repair" || tone === "break"
+          tone === "warning" || tone === "repair" || tone === "break" || tone === "storm"
             ? "square"
-            : tone === "step"
+            : tone === "step" || tone === "drill"
               ? "triangle"
               : "sine";
         oscillator.frequency.setValueAtTime(settings[0], now);
         oscillator.frequency.exponentialRampToValueAtTime(settings[1], now + settings[2]);
         gain.gain.setValueAtTime(
-          (tone === "step" ? 0.018 : tone === "repair" ? 0.042 : 0.05) * volume,
+          (tone === "step"
+            ? 0.018
+            : tone === "repair"
+              ? 0.042
+              : tone === "storm"
+                ? 0.035
+                : tone === "drill" || tone === "siphon"
+                  ? 0.026
+                  : 0.05) * volume,
           now,
         );
         gain.gain.exponentialRampToValueAtTime(0.001, now + settings[2]);
@@ -1927,6 +2216,76 @@ export function MoonGoonsGame() {
     },
     [],
   );
+
+  const stopAmbience = useCallback(() => {
+    const context = ambienceRef.current;
+    ambienceRef.current = null;
+    if (context && context.state !== "closed") void context.close();
+  }, []);
+
+  const startAmbience = useCallback(
+    (destinationId: DestinationId) => {
+      stopAmbience();
+      try {
+        const volume = controlSettingsRef.current.volume;
+        if (volume <= 0.001) return;
+        const AudioContextClass =
+          window.AudioContext ||
+          (window as typeof window & { webkitAudioContext?: typeof AudioContext })
+            .webkitAudioContext;
+        if (!AudioContextClass) return;
+        const context = new AudioContextClass();
+        ambienceRef.current = context;
+        const master = context.createGain();
+        master.gain.setValueAtTime(0.0001, context.currentTime);
+        master.gain.exponentialRampToValueAtTime(
+          (destinationId === "rust_belt" ? 0.038 : 0.022) * volume,
+          context.currentTime + 1.5,
+        );
+        master.connect(context.destination);
+
+        const hum = context.createOscillator();
+        const humGain = context.createGain();
+        hum.type = destinationId === "rust_belt" ? "sawtooth" : "sine";
+        hum.frequency.value = destinationId === "rust_belt" ? 43 : 58;
+        humGain.gain.value = destinationId === "rust_belt" ? 0.24 : 0.16;
+        hum.connect(humGain).connect(master);
+        hum.start();
+
+        const buffer = context.createBuffer(1, context.sampleRate * 2, context.sampleRate);
+        const channel = buffer.getChannelData(0);
+        for (let index = 0; index < channel.length; index += 1) {
+          channel[index] = (Math.random() * 2 - 1) * 0.35;
+        }
+        const noise = context.createBufferSource();
+        const filter = context.createBiquadFilter();
+        const noiseGain = context.createGain();
+        noise.buffer = buffer;
+        noise.loop = true;
+        filter.type = destinationId === "rust_belt" ? "bandpass" : "lowpass";
+        filter.frequency.value = destinationId === "rust_belt" ? 760 : 180;
+        filter.Q.value = destinationId === "rust_belt" ? 2.6 : 0.8;
+        noiseGain.gain.value = destinationId === "rust_belt" ? 0.32 : 0.18;
+        noise.connect(filter).connect(noiseGain).connect(master);
+        noise.start();
+
+        if (destinationId === "rust_belt") {
+          const lfo = context.createOscillator();
+          const lfoDepth = context.createGain();
+          lfo.type = "sine";
+          lfo.frequency.value = 0.11;
+          lfoDepth.gain.value = 0.006 * volume;
+          lfo.connect(lfoDepth).connect(master.gain);
+          lfo.start();
+        }
+      } catch {
+        ambienceRef.current = null;
+      }
+    },
+    [stopAmbience],
+  );
+
+  useEffect(() => () => stopAmbience(), [stopAmbience]);
 
   const handleNotesOpenChange = useCallback((open: boolean) => {
     notesOpenRef.current = open;
@@ -2049,7 +2408,21 @@ export function MoonGoonsGame() {
     cyanRim.position.set(28, 12, -34);
     scene.add(cyanRim);
 
-    const world = createWorld(scene);
+    const applyDestinationLook = (destinationId: DestinationId) => {
+      const rust = destinationId === "rust_belt";
+      scene.background = new THREE.Color(rust ? 0x0e080b : palette.void);
+      scene.fog = new THREE.FogExp2(rust ? 0x1b0d11 : 0x0c1222, rust ? 0.011 : 0.0085);
+      hemisphere.color.setHex(rust ? 0xd98f68 : 0x8fd9ea);
+      hemisphere.groundColor.setHex(rust ? 0x21131a : 0x171827);
+      hemisphere.intensity = rust ? 1.4 : 1.65;
+      sun.color.setHex(rust ? 0xffc08b : 0xfff1d1);
+      sun.intensity = rust ? 4.15 : 4.6;
+      cyanRim.color.setHex(rust ? palette.coral : palette.cyan);
+      cyanRim.intensity = rust ? 2.05 : 1.25;
+      renderer.toneMappingExposure = rust ? 1.22 : 1.12;
+    };
+    applyDestinationLook(activeDestinationRef.current);
+    let world = createWorld(scene, activeDestinationRef.current);
     const astronaut = createAstronaut();
     scene.add(astronaut);
     const remoteAstronauts = new Map<
@@ -2085,7 +2458,10 @@ export function MoonGoonsGame() {
       [1.08, 0.76, 0.58],
     ];
 
-    let deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
+    let deposits = createMissionDepositDefinitions(
+      missionSeedRef.current,
+      activeDestinationRef.current,
+    ).map(
       (definition) => createDeposit(definition),
     );
     deposits.forEach((deposit) => scene.add(deposit.group));
@@ -2193,6 +2569,8 @@ export function MoonGoonsGame() {
     let meteorWarningPlayed = false;
     let missionRandom = seededRandom(missionSeedRef.current + 704);
     let meteorCooldown = 5.5;
+    let magneticStormCycle = -1;
+    let magneticStormPlayed = false;
     let stepTimer = 0;
     let cameraImpact = 0;
     let cameraPitch = 0;
@@ -2211,6 +2589,7 @@ export function MoonGoonsGame() {
     let padPingLatch = false;
     let lastPadConnected = false;
     let wrongHarvestToolLatch = false;
+    let harvestAudioActive = false;
     let lastToolWheelAt = 0;
 
     const shatterDeposit = (deposit: DepositRuntime, impactSpeed: number) => {
@@ -2239,7 +2618,10 @@ export function MoonGoonsGame() {
 
     const resetDeposits = () => {
       deposits.forEach((deposit) => deposit.group.removeFromParent());
-      deposits = createMissionDepositDefinitions(missionSeedRef.current).map(
+      deposits = createMissionDepositDefinitions(
+        missionSeedRef.current,
+        activeDestinationRef.current,
+      ).map(
         (definition) => createDeposit(definition),
       );
       deposits.forEach((deposit) => scene.add(deposit.group));
@@ -2397,6 +2779,11 @@ export function MoonGoonsGame() {
     };
 
     resetRuntimeRef.current = () => {
+      if (world.destinationId !== activeDestinationRef.current) {
+        world.root.removeFromParent();
+        world = createWorld(scene, activeDestinationRef.current);
+        applyDestinationLook(activeDestinationRef.current);
+      }
       astronaut.position.set(-12, 0, 5);
       astronaut.rotation.set(0, 0, 0);
       velocity.set(0, 0, 0);
@@ -2443,6 +2830,8 @@ export function MoonGoonsGame() {
       tutorialCarriedRef.current = false;
       warningPlayed = false;
       meteorWarningPlayed = false;
+      magneticStormCycle = -1;
+      magneticStormPlayed = false;
       missionRandom = seededRandom(missionSeedRef.current + 704);
       meteorCooldown = 4.5 + missionRandom() * 2;
       cameraImpact = 0;
@@ -2916,9 +3305,11 @@ export function MoonGoonsGame() {
 
     const applyAuthoritativeState = (state: CrewMissionState) => {
       if (state.missionSeed !== missionSeedRef.current) return;
+      const incomingContractId = normalizeContractId(state.contractId);
       timeRef.current = state.time;
-      activeContractIdRef.current = state.contractId ?? "standard_procurement";
-      setSelectedContractId(state.contractId ?? "standard_procurement");
+      activeContractIdRef.current = incomingContractId;
+      activeDestinationRef.current = CONTRACTS[incomingContractId].destinationId;
+      setSelectedContractId(incomingContractId);
       scoreRef.current = state.score;
       messageRef.current = state.message;
       phaseRef.current = state.phase;
@@ -3218,6 +3609,13 @@ export function MoonGoonsGame() {
         networkMissionStartRef.current !== null &&
         phaseRef.current === "briefing"
       ) {
+        const incomingContractId = incomingAuthorityRef.current?.state.contractId;
+        if (incomingContractId) {
+          const safeContractId = normalizeContractId(incomingContractId);
+          activeContractIdRef.current = safeContractId;
+          activeDestinationRef.current = CONTRACTS[safeContractId].destinationId;
+          setSelectedContractId(safeContractId);
+        }
         missionSeedRef.current = networkMissionStartRef.current;
         resetRuntimeRef.current?.();
         missionRunIdRef.current += 1;
@@ -3227,6 +3625,7 @@ export function MoonGoonsGame() {
           crewSessionRef.current?.role === "guest"
             ? "Crew contract received. Local movement prediction engaged."
             : "Crew contract live. Mission state authority assigned.";
+        startAmbience(activeDestinationRef.current);
         networkMissionStartRef.current = null;
       }
       const session = crewSessionRef.current;
@@ -3425,6 +3824,79 @@ export function MoonGoonsGame() {
             : 0.65;
       });
 
+      let magneticStormWarning = false;
+      let magneticStormActive = false;
+      if (world.destinationId === "rust_belt") {
+        const fieldTime = now * 0.001 + (missionSeedRef.current % 17) * 0.31;
+        const fieldCycle = Math.floor(fieldTime / 19);
+        const fieldPhase = fieldTime % 19;
+        magneticStormWarning = fieldPhase >= 13.2 && fieldPhase < 15.2;
+        magneticStormActive = fieldPhase >= 15.2 && fieldPhase < 18.1;
+        if (fieldCycle !== magneticStormCycle) {
+          magneticStormCycle = fieldCycle;
+          magneticStormPlayed = false;
+        }
+        const fieldStrength = magneticStormActive
+          ? 0.72 + Math.sin(now * 0.018) * 0.24
+          : magneticStormWarning
+            ? 0.24 + Math.sin(now * 0.011) * 0.09
+            : 0.06;
+        const arcs = (world.magneticField.userData.arcs ?? []) as THREE.Mesh[];
+        arcs.forEach((arc, index) => {
+          arc.rotation.z += dt * (0.08 + index * 0.035) * (magneticStormActive ? 4 : 1);
+          arc.rotation.y -= dt * 0.04 * (index % 2 === 0 ? 1 : -1);
+          (arc.material as THREE.MeshBasicMaterial).opacity =
+            (arc.userData.baseOpacity as number) + fieldStrength * (0.22 + index * 0.018);
+          arc.scale.setScalar(1 + fieldStrength * 0.08 + Math.sin(now * 0.006 + index) * 0.025);
+        });
+        const fieldCore = world.magneticField.userData.core as THREE.Mesh;
+        const fieldLight = world.magneticField.userData.light as THREE.PointLight;
+        fieldCore.rotation.y += dt * (magneticStormActive ? 2.8 : 0.42);
+        fieldCore.rotation.x -= dt * (magneticStormActive ? 1.7 : 0.18);
+        fieldLight.intensity = magneticStormActive
+          ? 18 + Math.sin(now * 0.027) * 7
+          : magneticStormWarning
+            ? 6
+            : 1.5;
+
+        if (phase === "active" && magneticStormWarning && !magneticStormPlayed) {
+          magneticStormPlayed = true;
+          messageRef.current =
+            "POLARITY SURGE INBOUND. Secure magnetic cargo or enjoy the company chase procedure.";
+          sound("storm");
+        }
+
+        if (phase === "active" && magneticStormActive) {
+          const fieldPosition = world.magneticField.getWorldPosition(new THREE.Vector3());
+          if (playerHeight > 0.25) {
+            const playerPull = fieldPosition.clone().sub(astronaut.position).setY(0);
+            if (playerPull.lengthSq() > 0.01) velocity.addScaledVector(playerPull.normalize(), dt * 0.9);
+          }
+          if (hasAuthority) {
+            deposits.forEach((deposit) => {
+              if (
+                !cargoData[deposit.kind].magnetic ||
+                (deposit.state !== "cargo" && !deposit.isBallistic) ||
+                deposit.ownerId
+              ) {
+                return;
+              }
+              const pull = fieldPosition.clone().sub(deposit.group.position);
+              if (pull.lengthSq() > 0.01) {
+                deposit.velocity.addScaledVector(pull.normalize(), dt * 5.4);
+                deposit.isBallistic = true;
+              }
+            });
+            if (!cartOwnerId && cartCargoIds.length > 0) {
+              const cartPull = fieldPosition.clone().sub(world.rover.position).setY(0);
+              if (cartPull.lengthSq() > 0.01) {
+                world.rover.position.addScaledVector(cartPull.normalize(), dt * 0.42);
+              }
+            }
+          }
+        }
+      }
+
       if (
         phase === "active" &&
         !notesOpenRef.current &&
@@ -3518,19 +3990,22 @@ export function MoonGoonsGame() {
             }
           });
         }
-        if (timeRef.current <= 55) {
+        const debrisWindow = world.destinationId === "rust_belt" ? 82 : 55;
+        if (timeRef.current <= debrisWindow) {
           if (!meteorWarningPlayed) {
             meteorWarningPlayed = true;
             messageRef.current =
-              "DEBRIS SHOWER INBOUND. Coral target markers now indicate professional concern.";
+              world.destinationId === "rust_belt"
+                ? "ORBITAL SCRAP CONVERGENCE. The asteroid is collecting company property at speed."
+                : "DEBRIS SHOWER INBOUND. Coral target markers now indicate professional concern.";
             sound("warning");
           }
           meteorCooldown -= dt;
           if (meteorCooldown <= 0 && armMeteorHazard()) {
             meteorCooldown =
               timeRef.current <= 25
-                ? 2.5 + missionRandom() * 1.8
-                : 4 + missionRandom() * 2.5;
+                ? (world.destinationId === "rust_belt" ? 1.9 : 2.5) + missionRandom() * 1.8
+                : (world.destinationId === "rust_belt" ? 3.1 : 4) + missionRandom() * 2.5;
           }
         }
 
@@ -3741,7 +4216,7 @@ export function MoonGoonsGame() {
           thrusterFuel = Math.min(thrusterCapacity, thrusterFuel + 31 * dt);
         }
         if (playerHeight > 0 || verticalVelocity > 0) {
-          verticalVelocity -= MOON_GRAVITY * dt;
+          verticalVelocity -= world.gravity * dt;
           playerHeight += verticalVelocity * dt;
           if (playerHeight <= 0) {
             const landingSpeed = Math.abs(verticalVelocity);
@@ -3938,7 +4413,7 @@ export function MoonGoonsGame() {
               );
             });
             if (deposit.isBallistic) {
-              deposit.velocity.y -= MOON_GRAVITY * dt;
+              deposit.velocity.y -= world.gravity * dt;
               deposit.group.position.addScaledVector(deposit.velocity, dt);
               deposit.group.rotation.x += dt * 4.8;
               deposit.group.rotation.z += dt * 3.2;
@@ -4248,6 +4723,16 @@ export function MoonGoonsGame() {
           : 2.6;
 
         if (harvesting && nearestHarvestable) {
+          if (!harvestAudioActive) {
+            sound(
+              activeHarvestTool === "drill"
+                ? "drill"
+                : activeHarvestTool === "siphon"
+                  ? "siphon"
+                  : "repair",
+            );
+            harvestAudioActive = true;
+          }
           tutorialDrilledRef.current = true;
           nearestHarvestable.state = "extracting";
           let extractionGain = 0;
@@ -4369,6 +4854,7 @@ export function MoonGoonsGame() {
             sound("warning");
           }
         } else {
+          harvestAudioActive = false;
           drillBeam.visible = false;
           drillGlow.intensity = 0;
           corerCycleRef.current = Math.max(0, corerCycleRef.current - dt * 42);
@@ -4602,16 +5088,31 @@ export function MoonGoonsGame() {
         }
       });
 
+      world.floatingDebris.children.forEach((scrap, index) => {
+        const spin = scrap.userData.spin as THREE.Vector3 | undefined;
+        if (spin) {
+          scrap.rotation.x += spin.x * dt;
+          scrap.rotation.y += spin.y * dt;
+          scrap.rotation.z += spin.z * dt;
+        }
+        scrap.position.y += Math.sin(now * 0.00035 + index * 1.7) * dt * 0.12;
+      });
+
       const finalWindow = phase === "active" && timeRef.current <= 30;
+      const rustBelt = world.destinationId === "rust_belt";
       sun.intensity = THREE.MathUtils.damp(
         sun.intensity,
-        finalWindow ? 3.65 + Math.sin(now * 0.012) * 0.28 : 4.6,
+        finalWindow
+          ? (rustBelt ? 4.8 : 3.65) + Math.sin(now * 0.012) * 0.28
+          : rustBelt
+            ? 4.15
+            : 4.6,
         3,
         dt,
       );
       cyanRim.intensity = THREE.MathUtils.damp(
         cyanRim.intensity,
-        finalWindow ? 2.35 : 1.25,
+        finalWindow ? (rustBelt ? 3.4 : 2.35) : rustBelt ? 2.05 : 1.25,
         3,
         dt,
       );
@@ -4664,7 +5165,7 @@ export function MoonGoonsGame() {
           throwOrigin.y,
           Math.hypot(throwVelocity.x, throwVelocity.z),
           throwVelocity.y,
-          MOON_GRAVITY,
+          world.gravity,
         );
         const riskColor =
           currentThrowPrediction.risk === "SHATTER"
@@ -4684,7 +5185,7 @@ export function MoonGoonsGame() {
           dot.position
             .copy(throwOrigin)
             .addScaledVector(throwVelocity, sampleTime);
-          dot.position.y -= 0.5 * MOON_GRAVITY * sampleTime * sampleTime;
+          dot.position.y -= 0.5 * world.gravity * sampleTime * sampleTime;
           dot.visible = dot.position.y >= 0.62;
         });
         landingMarker.position.set(
@@ -4927,12 +5428,19 @@ export function MoonGoonsGame() {
           (a, b) =>
             a.position.distanceTo(astronaut.position) -
             b.position.distanceTo(astronaut.position),
-        )[0];
-        const ventDistance = nearestVent.position.distanceTo(astronaut.position);
-        if (ventDistance < 6 && nearestVent.userData.erupting) {
-          prompt = "PRESSURE VENT ERUPTING · USE THRUSTER TO CLEAR";
-        } else if (ventDistance < 6 && nearestVent.userData.warning) {
-          prompt = `VENT PRESSURE RISING · ${Math.round(ventDistance)}m`;
+          )[0];
+        if (nearestVent) {
+          const ventDistance = nearestVent.position.distanceTo(astronaut.position);
+          if (ventDistance < 6 && nearestVent.userData.erupting) {
+            prompt = "PRESSURE VENT ERUPTING · USE THRUSTER TO CLEAR";
+          } else if (ventDistance < 6 && nearestVent.userData.warning) {
+            prompt = `VENT PRESSURE RISING · ${Math.round(ventDistance)}m`;
+          }
+        }
+        if (magneticStormActive) {
+          prompt = "POLARITY SURGE ACTIVE · MAGNETIC CARGO IS MOVING";
+        } else if (magneticStormWarning) {
+          prompt = "POLARITY SURGE INBOUND · SECURE CART + CARGO";
         }
         const nearbyMeteor = world.meteorHazards
           .filter(
@@ -5105,7 +5613,7 @@ export function MoonGoonsGame() {
       renderer.dispose();
       renderer.domElement.remove();
     };
-  }, [queueCrewAction, requestMouseLock, sound]);
+  }, [queueCrewAction, requestMouseLock, sound, startAmbience]);
 
   useEffect(() => {
     if (snapshot.phase !== "success" && snapshot.phase !== "failed") return;
@@ -5150,13 +5658,15 @@ export function MoonGoonsGame() {
     authoritativeStateRef.current = null;
     incomingAuthorityRef.current = null;
     setHubTerminalOpen(false);
+    stopAmbience();
     setSnapshot((current) => ({ ...current, phase: "briefing" }));
-  }, []);
+  }, [stopAmbience]);
 
   const resetMission = useCallback(() => {
     const session = crewSessionRef.current;
     if (session?.role === "guest") return;
     activeContractIdRef.current = selectedContractId;
+    activeDestinationRef.current = CONTRACTS[selectedContractId].destinationId;
     missionRunIdRef.current += 1;
     setHubTerminalOpen(false);
     setLastSettlement(null);
@@ -5231,11 +5741,18 @@ export function MoonGoonsGame() {
       tutorialCarried: false,
     });
     requestMouseLock();
+    startAmbience(activeDestinationRef.current);
     sound("launch");
-  }, [requestMouseLock, selectedContractId, sound]);
+  }, [requestMouseLock, selectedContractId, sound, startAmbience]);
+
+  useEffect(() => {
+    if (snapshot.phase !== "active") stopAmbience();
+  }, [snapshot.phase, stopAmbience]);
 
   const percent = Math.min(100, (snapshot.score / snapshot.contractTarget) * 100);
   const urgent = snapshot.phase === "active" && snapshot.time <= 30;
+  const activeDestination = DESTINATIONS[CONTRACTS[snapshot.contractId].destinationId];
+  const debrisForecastWindow = activeDestination.id === "rust_belt" ? 82 : 55;
   const selectedHarvestTool = harvestToolData[snapshot.activeHarvestTool];
   const harvestMeterLabel =
     snapshot.activeHarvestTool === "drill"
@@ -5248,6 +5765,7 @@ export function MoonGoonsGame() {
     <main
       className={styles.shell}
       data-phase={snapshot.phase}
+      data-destination={activeDestination.id}
       data-high-contrast={controlSettings.highContrast || undefined}
       data-quality={controlSettings.renderQuality}
       style={{ "--hud-scale": controlSettings.hudScale } as CSSProperties}
@@ -5256,7 +5774,7 @@ export function MoonGoonsGame() {
         ref={mountRef}
         className={`${styles.canvas} ${mouseCaptured ? styles.mouseLocked : ""}`}
         role="img"
-        aria-label="Playable third-person 3D Practice Moon extraction mission"
+        aria-label={`Playable third-person 3D ${activeDestination.name} extraction mission`}
       />
 
       {snapshot.phase === "briefing" && (
@@ -5275,7 +5793,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 028 // CLEAN CONSOLE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 029 // RUST BELT SURVEY</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -5355,8 +5873,8 @@ export function MoonGoonsGame() {
 
           <aside className={styles.missionPanel}>
             <div className={styles.panelCode}>
-              <span>ACTIVE CONTRACT</span>
-              <b>PM-{String(snapshot.missionSeed).padStart(5, "0")}</b>
+              <span>{`${activeDestination.name.toUpperCase()} // ${activeDestination.gravity.toFixed(2)} m/s² FIELD`}</span>
+              <b>{activeDestination.code}-{String(snapshot.missionSeed).padStart(5, "0")}</b>
             </div>
             <h2>{CONTRACTS[snapshot.contractId].name}</h2>
             <p>
@@ -5392,10 +5910,14 @@ export function MoonGoonsGame() {
                     )}% // ${snapshot.cargoStructure}`
                   : "Hands regrettably empty"}
               </span>
-              <span className={snapshot.time <= 55 ? styles.stormActive : ""}>
-                {snapshot.time <= 55
+              <span className={snapshot.time <= debrisForecastWindow ? styles.stormActive : ""}>
+                {activeDestination.id === "rust_belt"
+                  ? snapshot.time <= debrisForecastWindow
+                    ? "SCRAP CONVERGENCE // ACTIVE · POLARITY SURGES INTERMITTENT"
+                    : `SCRAP FORECAST // T-${Math.ceil(snapshot.time - debrisForecastWindow)}s · POLARITY UNSTABLE`
+                  : snapshot.time <= debrisForecastWindow
                   ? "DEBRIS SHOWER // ACTIVE"
-                  : `DEBRIS FORECAST // T-${Math.ceil(snapshot.time - 55)}s`}
+                  : `DEBRIS FORECAST // T-${Math.ceil(snapshot.time - debrisForecastWindow)}s`}
               </span>
             </div>
           </aside>

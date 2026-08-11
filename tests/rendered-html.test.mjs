@@ -184,16 +184,16 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /<title>Moon Goons — Practice Moon \| Moon Goons<\/title>/i);
+  assert.match(html, /<title>Moon Goons — Two-Destination Field Test \| Moon Goons<\/title>/i);
   assert.match(html, /THE QUESTIONABLE DECISION/);
   assert.match(html, /OPEN OPS TERMINAL/);
   assert.match(html, /PERSONAL \/\/ THIS DEVICE/);
   assert.match(html, /CREW-SHARED \/\/ THIS RUN/);
   assert.match(html, /Contract Control/);
   assert.match(html, /Crew Link Uplink/);
-  assert.match(html, /Playable third-person 3D Practice Moon extraction mission/);
+  assert.match(html, /Playable third-person 3D The Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 028/);
+  assert.match(html, /BUILD 029/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -275,7 +275,7 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   });
   const state = {
     missionSeed: host.missionSeed,
-    contractId: "standard_procurement",
+    contractId: "rust_belt_salvage",
     phase: "active",
     time: 180,
     score: 0,
@@ -363,6 +363,7 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   const guestPoll = await guestPollResponse.json();
   assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[0].id);
   assert.equal(guestPoll.room.authoritativeState.message, "Cargo cart hitch accepted.");
+  assert.equal(guestPoll.room.authoritativeState.contractId, "rust_belt_salvage");
   assert.equal(guestPoll.room.authoritativeState.cart.ownerId, guest.memberId);
 
   const closeResponse = await fetch(crewUrl(host), {

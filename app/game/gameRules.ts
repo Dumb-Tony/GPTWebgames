@@ -1,3 +1,5 @@
+import type { DestinationId } from "./progression";
+
 export const CONTRACT_TARGET = 900;
 export const MISSION_SECONDS = 180;
 export const DRILL_JAM_WEAR = 100;
@@ -239,6 +241,34 @@ const missionCargoKinds: CargoKind[] = [
   "ferric",
 ];
 
+const rustDepositSpawnPoints: Array<[number, number]> = [
+  [-4, -14],
+  [9, 12],
+  [21, -9],
+  [30, 16],
+  [36, -19],
+  [-12, 17],
+  [15, 27],
+  [26, 5],
+  [-7, 31],
+  [37, 6],
+  [15, -27],
+  [-28, 24],
+  [-34, -4],
+  [5, 36],
+];
+
+const rustCargoKinds: CargoKind[] = [
+  "ferric",
+  "platinum",
+  "helium",
+  "ferric",
+  "glass",
+  "platinum",
+  "ferric",
+  "helium",
+];
+
 export function formatTime(seconds: number) {
   const safe = Math.max(0, Math.ceil(seconds));
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
@@ -272,13 +302,18 @@ export function nextMissionSeed(seed: number) {
   return (seed * 48271) % 99991;
 }
 
-export function createMissionDepositDefinitions(seed: number): DepositDefinition[] {
+export function createMissionDepositDefinitions(
+  seed: number,
+  destinationId: DestinationId = "practice_moon",
+): DepositDefinition[] {
   const random = seededRandom(seed);
-  const positions = shuffled(depositSpawnPoints, random).slice(
+  const spawnPoints = destinationId === "rust_belt" ? rustDepositSpawnPoints : depositSpawnPoints;
+  const cargoKinds = destinationId === "rust_belt" ? rustCargoKinds : missionCargoKinds;
+  const positions = shuffled(spawnPoints, random).slice(
     0,
-    missionCargoKinds.length,
+    cargoKinds.length,
   );
-  const kinds = shuffled(missionCargoKinds, random);
+  const kinds = shuffled(cargoKinds, random);
   return positions.map((position, index) => ({
     id: index + 1,
     kind: kinds[index],
