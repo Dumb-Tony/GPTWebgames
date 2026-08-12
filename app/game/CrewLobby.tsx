@@ -241,22 +241,49 @@ export function CrewRoster({
   latency: number | null;
   onLeave: () => void;
 }) {
+  const localMember = room?.members.find((member) => member.id === session.memberId);
+  const linkQuality =
+    latency === null
+      ? "syncing"
+      : latency <= 120
+        ? "stable"
+        : latency <= 260
+          ? "delayed"
+          : "strained";
   return (
     <aside className={styles.crewRoster} aria-label="Connected crew">
       <div className={styles.crewRosterHeader}>
         <span>CREW // {session.roomCode}</span>
-        <strong>{latency === null ? "SYNCING" : `${latency} MS`}</strong>
+        <strong data-link={linkQuality}>
+          {latency === null ? "SYNCING" : `${linkQuality.toUpperCase()} · ${latency} MS`}
+        </strong>
       </div>
-      {(room?.members ?? []).map((member) => (
-        <div className={styles.crewRosterMember} key={member.id}>
-          <i style={{ background: crewColor(member.colorIndex).css }} />
-          <span>{member.name}</span>
-          <small>
-            {member.id === session.memberId ? "YOU · " : ""}
-            {crewStatus(member.inputMask)}
-          </small>
-        </div>
-      ))}
+      {(room?.members ?? []).map((member) => {
+        const distance =
+          localMember && member.id !== session.memberId
+            ? Math.hypot(
+                member.x - localMember.x,
+                member.y - localMember.y,
+                member.z - localMember.z,
+              )
+            : null;
+        return (
+          <div
+            className={styles.crewRosterMember}
+            data-downed={(member.inputMask & CREW_INPUT_DOWNED) !== 0 || undefined}
+            key={member.id}
+          >
+            <i style={{ background: crewColor(member.colorIndex).css }} />
+            <span>{member.name}</span>
+            <small>
+              {member.id === session.memberId ? "YOU · " : ""}
+              {crewStatus(member.inputMask)}
+              {distance === null ? "" : ` · ${Math.round(distance)}m`}
+            </small>
+          </div>
+        );
+      })}
+      <p className={styles.crewSignalHint}>P LOCATION · 1 HELP · 2 CARGO · 3 DANGER · 4 SHIP</p>
       <button type="button" onClick={onLeave}>LEAVE CREW</button>
     </aside>
   );

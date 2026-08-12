@@ -26,6 +26,7 @@ export type CrewActionType =
   | "tether"
   | "magnet"
   | "stabilize"
+  | "rescue"
   | "cart_toggle"
   | "ping"
   | "ping_help"
@@ -62,6 +63,40 @@ export type CrewAction = {
   sequence: number;
   type: CrewActionType;
   createdAt: string;
+};
+
+export type QueuedCrewAction = Pick<CrewAction, "sequence" | "type">;
+
+export function enqueueCrewAction(
+  queue: readonly QueuedCrewAction[],
+  action: QueuedCrewAction,
+  capacity = 12,
+) {
+  const safeCapacity = Math.max(1, Math.trunc(capacity));
+  return [...queue, action].slice(-safeCapacity);
+}
+
+export type CrewPingKind =
+  | "position"
+  | "help"
+  | "cargo"
+  | "danger"
+  | "ship";
+
+export type CrewMissionPing = {
+  id: string;
+  memberId: string;
+  memberName: string;
+  kind: CrewPingKind;
+  position: [number, number, number];
+  remaining: number;
+};
+
+export type CrewRescueAssist = {
+  targetMemberId: string;
+  helperMemberId: string;
+  helperName: string;
+  remaining: number;
 };
 
 export type CrewDepositState = {
@@ -102,6 +137,8 @@ export type CrewMissionState = {
     vaultOpen: boolean;
     railPulse: number;
   };
+  pings?: CrewMissionPing[];
+  rescueAssists?: CrewRescueAssist[];
   deposits: CrewDepositState[];
   stats: {
     repairsCompleted: number;

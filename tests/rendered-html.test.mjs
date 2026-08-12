@@ -193,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D The Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 030/);
+  assert.match(html, /BUILD 031/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -237,7 +237,7 @@ test("crew endpoint validates an empty call sign without touching storage", asyn
   assert.equal(payload.error, "Use a call sign with at least two characters.");
 });
 
-test("Crew Link supports a two-player room, authoritative launch, cart action, and clean shutdown", async () => {
+test("Crew Link preserves queued actions, signals, rescue state, and clean shutdown", async () => {
   const createResponse = await fetch(new URL("/api/crew", baseUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -291,6 +291,24 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
       vaultOpen: false,
       railPulse: 0.65,
     },
+    pings: [
+      {
+        id: "test-cargo-ping",
+        memberId: guest.memberId,
+        memberName: "CART INTERN",
+        kind: "cargo",
+        position: [8.5, 0.05, -3.25],
+        remaining: 7.5,
+      },
+    ],
+    rescueAssists: [
+      {
+        targetMemberId: host.memberId,
+        helperMemberId: guest.memberId,
+        helperName: "CART INTERN",
+        remaining: 2.2,
+      },
+    ],
     deposits: [],
     stats: {
       repairsCompleted: 0,
@@ -326,6 +344,26 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   });
   assert.equal(actionResponse.status, 200);
 
+  const burstActionResponse = await fetch(crewUrl(guest), {
+    method: "PATCH",
+    headers: headersFor(guest),
+    body: JSON.stringify({
+      presence: { x: 8.75, y: 0, z: -3, yaw: 0.72, inputMask: 34 },
+      action: { sequence: 2, type: "ping_cargo" },
+    }),
+  });
+  assert.equal(burstActionResponse.status, 200);
+
+  const rescueActionResponse = await fetch(crewUrl(guest), {
+    method: "PATCH",
+    headers: headersFor(guest),
+    body: JSON.stringify({
+      presence: { x: 9, y: 0, z: -2.8, yaw: 0.75, inputMask: 34 },
+      action: { sequence: 3, type: "rescue" },
+    }),
+  });
+  assert.equal(rescueActionResponse.status, 200);
+
   const hostPollResponse = await fetch(crewUrl(host), {
     headers: { "x-crew-token": host.token },
   });
@@ -335,11 +373,13 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   const remoteMember = hostPoll.room.members.find(
     (member) => member.id === guest.memberId,
   );
-  assert.equal(remoteMember.x, 8.5);
-  assert.equal(remoteMember.z, -3.25);
+  assert.equal(remoteMember.x, 9);
+  assert.equal(remoteMember.z, -2.8);
   assert.equal(remoteMember.inputMask, 34);
-  assert.equal(hostPoll.room.actions.length, 1);
+  assert.equal(hostPoll.room.actions.length, 3);
   assert.equal(hostPoll.room.actions[0].type, "cart_toggle");
+  assert.equal(hostPoll.room.actions[1].type, "ping_cargo");
+  assert.equal(hostPoll.room.actions[2].type, "rescue");
 
   const acknowledgedState = {
     ...state,
@@ -356,7 +396,7 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
     body: JSON.stringify({
       presence: { x: -12, y: 0, z: 5, yaw: 0, inputMask: 0 },
       authoritativeState: acknowledgedState,
-      ackActionId: hostPoll.room.actions[0].id,
+      ackActionId: hostPoll.room.actions[2].id,
     }),
   });
   assert.equal(acknowledgeResponse.status, 200);
@@ -366,11 +406,16 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   });
   assert.equal(guestPollResponse.status, 200);
   const guestPoll = await guestPollResponse.json();
-  assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[0].id);
+  assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[2].id);
   assert.equal(guestPoll.room.authoritativeState.message, "Cargo cart hitch accepted.");
   assert.equal(guestPoll.room.authoritativeState.contractId, "rust_belt_salvage");
   assert.equal(guestPoll.room.authoritativeState.cart.ownerId, guest.memberId);
   assert.deepEqual(guestPoll.room.authoritativeState.facility, state.facility);
+  assert.deepEqual(guestPoll.room.authoritativeState.pings, state.pings);
+  assert.deepEqual(
+    guestPoll.room.authoritativeState.rescueAssists,
+    state.rescueAssists,
+  );
 
   const closeResponse = await fetch(crewUrl(host), {
     method: "DELETE",

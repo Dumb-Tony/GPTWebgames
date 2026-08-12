@@ -45,6 +45,7 @@ import {
   CREW_INPUT_THRUSTER,
   clampCrewTransform,
   crewColor,
+  enqueueCrewAction,
   isCrewMemberFresh,
   normalizeCrewName,
   normalizeRoomCode,
@@ -171,6 +172,25 @@ test("crew colors wrap and presence expiration has a clear boundary", () => {
   const now = Date.parse("2026-08-09T12:00:12.000Z");
   assert.equal(isCrewMemberFresh("2026-08-09T12:00:00.000Z", now), true);
   assert.equal(isCrewMemberFresh("2026-08-09T11:59:59.999Z", now), false);
+});
+
+test("Crew Link action queues preserve order and bound burst input", () => {
+  const queued = [
+    "scan",
+    "ping_help",
+    "ping_cargo",
+    "tether",
+  ].reduce(
+    (current, type, index) =>
+      enqueueCrewAction(
+        current,
+        { sequence: index + 1, type: type as "scan" | "ping_help" | "ping_cargo" | "tether" },
+        3,
+      ),
+    [] as Array<{ sequence: number; type: "scan" | "ping_help" | "ping_cargo" | "tether" }>,
+  );
+  assert.deepEqual(queued.map(({ sequence }) => sequence), [2, 3, 4]);
+  assert.deepEqual(queued.map(({ type }) => type), ["ping_help", "ping_cargo", "tether"]);
 });
 
 test("tether pull is capped, snaps predictably, and rewards a second hauler", () => {

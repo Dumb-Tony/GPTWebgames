@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 030: the Rust Belt Polarity Annex, a destination-specific magnetic machinery and derelict-facility slice layered onto the retro-NASA field test, three-tool kit, cargo-cart logistics, and vertical-slice work introduced in Builds 021–029.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 031: Crew Signals, a multiplayer coordination and reliability pass layered onto the Rust Belt Polarity Annex, retro-NASA field test, three-tool kit, and cargo-cart logistics introduced in Builds 021–030.
 
 ## Playable build
 
@@ -46,7 +46,10 @@ The first prototype includes:
 - Temporary five-character Crew Link room codes for 1–4 players
 - Distinct, color-coded remote astronauts with smooth position interpolation
 - Host-authoritative scanning, drilling, cargo ownership, throwing, deposits, timer, and results
-- Crew roster, round-trip latency display, location pings, and clean host-disconnect recovery
+- Crew roster with link-quality, distance, live status, and clear downed-teammate warnings
+- Color-coded world-space location, help, cargo, danger, and return-ship beacons
+- Reliable queued guest actions that preserve fast interaction and callout bursts
+- Automatic help signals and nearby teammate-assisted suit reboots
 - A physics tether gun with a forgiving 16m lock range and predictable 19m cable break
 - An 18m polarity manipulator that attracts or repels loose metal into dangerous low-gravity flight
 - A three-relay Rust Belt facility objective that unlocks a derelict government-surplus vault
@@ -152,7 +155,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 030 deepens Milestone 10 with Polarity Annex 6, a worn government-surplus processing station in the Rust Belt. Players switch the polarity manipulator between attract and repel, align three relays, open a derelict vault, recover the Rust-exclusive Prototype Flux Core, and feed magnetic cargo into a physical mag-rail aimed optimistically at the ship receiver. Relay, vault, rail, cargo, and polarity state synchronize through Crew Link. Remaining work includes more derelict-facility interactions, remappable action bindings, broader accessibility auditing, and measured hardware compatibility passes.
+Build 031 returns to Milestone 7 cooperation polish. Crew callouts now create color-coded world beacons, cargo and ship callouts mark useful targets, remote scientists carry readable overhead call signs, and the roster reports distance, activity, safe mode, and link quality. Guest actions use a bounded reliable queue instead of replacing one another during fast input. Downed scientists automatically broadcast for help, and nearby teammates can connect a reboot lead for an accelerated recovery. Remaining work includes physical tool handoff, longer four-player soak testing, remappable action bindings, and broader accessibility auditing.
 
 ## Design references
 

@@ -2322,8 +2322,36 @@
   font-size: 9px;
 }
 
+.crewRosterHeader strong[data-link="delayed"] {
+  color: var(--yellow);
+}
+
+.crewRosterHeader strong[data-link="strained"] {
+  color: var(--red);
+}
+
 .crewRosterMember {
   padding: 6px 7px;
+}
+
+.crewRosterMember[data-downed] {
+  border-left: 3px solid var(--red);
+  background: rgba(255, 97, 111, 0.12);
+}
+
+.crewRosterMember[data-downed] small {
+  color: #ffb6bd;
+}
+
+.crewSignalHint {
+  margin: 3px 0 0;
+  padding: 6px 7px;
+  border: 1px solid rgba(110, 231, 228, 0.12);
+  color: var(--muted);
+  font-family: monospace;
+  font-size: 7px;
+  letter-spacing: 0.045em;
+  line-height: 1.45;
 }
 
 .crewRoster > button {

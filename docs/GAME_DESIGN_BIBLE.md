@@ -2411,6 +2411,19 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Extended the retro-NASA presentation with oxidized surplus hardware, faded inspection labels,
   moving relay rings, energized rail coils, facility telemetry, and a dedicated relay audio cue.
 
+**Prototype status — Build 031 Crew Signals**
+
+- Replaced the single pending guest action slot with a bounded reliable queue so fast cargo,
+  tether, rescue, and callout inputs reach the mission lead in order under simulated loss.
+- Turned voice-free callouts into synchronized world-space beacons with distinct help, cargo,
+  danger, location, and return-ship treatments; contextual cargo pings select nearby samples.
+- Added overhead teammate call signs, short-horizon movement prediction, crew distance readouts,
+  link-quality telemetry, and stronger safe-mode warnings for multiplayer readability.
+- Added automatic help beacons for downed scientists and teammate-assisted suit reboot leads,
+  preserving self-recovery while rewarding a nearby crewmate who stops to help.
+- Extended the two-client integration check to verify ordered action bursts plus authoritative
+  ping and rescue-assist state round trips.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**
