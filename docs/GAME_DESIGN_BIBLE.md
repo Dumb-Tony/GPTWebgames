@@ -2398,6 +2398,19 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Kept destination authority inside the selected contract so existing Crew Link missions share
   the same world, gravity profile, deposit set, hazards, and payout rules without a new room field.
 
+**Prototype status — Build 030 Polarity Annex**
+
+- Added Polarity Annex 6, a worn government-surplus processing station that gives the Rust Belt
+  its first destination-exclusive facility objective.
+- Expanded the magnetic retriever into an attract/repel polarity manipulator. Three nearby relays
+  require deliberate polarity choices before the facility vault opens.
+- Added the Prototype Flux Core, an exclusive high-value magnetic sample released only after the
+  relay objective, plus a physical mag-rail that launches carried metal toward the ship receiver.
+- Synchronized relay alignment, vault state, rail activity, flux-core cargo state, and each crew
+  member's selected polarity through the existing host-authoritative Crew Link mission model.
+- Extended the retro-NASA presentation with oxidized surplus hardware, faded inspection labels,
+  moving relay rings, energized rail coils, facility telemetry, and a dedicated relay audio cue.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

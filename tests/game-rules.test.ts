@@ -6,6 +6,7 @@ import {
   DEFAULT_CONTROL_SETTINGS,
   TETHER_BREAK_RANGE,
   advanceSuitRecovery,
+  alignRustRelay,
   applySuitDamage,
   canHarvestCargo,
   canLoadCargoCart,
@@ -40,6 +41,7 @@ import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
   CREW_INPUT_MOVING,
+  CREW_INPUT_POLARITY_REPEL,
   CREW_INPUT_THRUSTER,
   clampCrewTransform,
   crewColor,
@@ -154,13 +156,14 @@ test("network transforms clamp untrusted client movement and input", () => {
       CREW_INPUT_MOVING |
       CREW_INPUT_THRUSTER |
       CREW_INPUT_DOWNED |
-      64,
+      CREW_INPUT_POLARITY_REPEL |
+      128,
   });
   assert.equal(transform.x, 48);
   assert.equal(transform.y, 0);
   assert.equal(transform.z, -48);
   assert.ok(Math.abs(transform.yaw - Math.PI) < 0.000001);
-  assert.equal(transform.inputMask, 63);
+  assert.equal(transform.inputMask, 127);
 });
 
 test("crew colors wrap and presence expiration has a clear boundary", () => {
@@ -229,7 +232,7 @@ test("the Rust Belt has a distinct, completable mineral survey", () => {
   assert.ok(missionMaximumValue(rustSurvey) >= CONTRACTS.rust_belt_salvage.target);
   assert.deepEqual(
     rustSurvey.map(({ kind }) => kind).sort(),
-    ["ferric", "ferric", "ferric", "glass", "helium", "helium", "platinum", "platinum"],
+    ["ferric", "ferric", "ferric", "flux_core", "glass", "helium", "platinum", "platinum"],
   );
   assert.equal(CONTRACTS.rust_belt_salvage.destinationId, "rust_belt");
   assert.ok(DESTINATIONS.rust_belt.gravity < DESTINATIONS.practice_moon.gravity);
@@ -276,6 +279,7 @@ test("the field kit routes each sample to a distinct harvesting method", () => {
   assert.equal(requiredHarvestTool("fossil"), "corer");
   assert.equal(requiredHarvestTool("vial"), "siphon");
   assert.equal(requiredHarvestTool("helium"), "siphon");
+  assert.equal(requiredHarvestTool("flux_core"), "drill");
   assert.equal(canHarvestCargo("corer", "glass"), true);
   assert.equal(canHarvestCargo("drill", "glass"), false);
   assert.equal(nextHarvestTool("drill"), "corer");
@@ -344,6 +348,20 @@ test("new field samples have distinct handling and failure personalities", () =>
   );
   assert.equal(calculateCargoImpact("helium", 1, 12.4).broken, true);
   assert.equal(calculateCargoImpact("fossil", 1, 12.4).broken, false);
+});
+
+test("Rust Belt relays require deliberate polarity and unlock the surplus vault", () => {
+  assert.deepEqual(alignRustRelay(0, 0, "repel"), {
+    accepted: false,
+    relayMask: 0,
+    vaultOpen: false,
+  });
+  const first = alignRustRelay(0, 0, "attract");
+  const second = alignRustRelay(first.relayMask, 1, "repel");
+  const third = alignRustRelay(second.relayMask, 2, "attract");
+  assert.deepEqual(first, { accepted: true, relayMask: 1, vaultOpen: false });
+  assert.deepEqual(second, { accepted: true, relayMask: 3, vaultOpen: false });
+  assert.deepEqual(third, { accepted: true, relayMask: 7, vaultOpen: true });
 });
 
 test("throw prediction exposes distance and cargo-specific first-impact risk", () => {
@@ -421,6 +439,7 @@ test("standard controllers apply deadzones and expose the complete field control
   buttons[8] = { pressed: true, value: 1 };
   buttons[10] = { pressed: true, value: 1 };
   buttons[11] = { pressed: true, value: 1 };
+  buttons[12] = { pressed: true, value: 1 };
   buttons[13] = { pressed: true, value: 1 };
   const input = readStandardGamepad({
     connected: true,
@@ -438,6 +457,7 @@ test("standard controllers apply deadzones and expose the complete field control
   assert.equal(input.drill, true);
   assert.equal(input.tether, true);
   assert.equal(input.magnet, true);
+  assert.equal(input.polarityToggle, true);
   assert.equal(input.stabilize, true);
   assert.equal(input.cartToggle, true);
   assert.equal(input.toolCycle, true);

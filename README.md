@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 029: the first playable Rust Belt expedition and a retro-NASA visual/audio pass layered onto the three-tool field kit, cargo-cart logistics, and vertical-slice work introduced in Builds 021–028.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 030: the Rust Belt Polarity Annex, a destination-specific magnetic machinery and derelict-facility slice layered onto the retro-NASA field test, three-tool kit, cargo-cart logistics, and vertical-slice work introduced in Builds 021–029.
 
 ## Playable build
 
@@ -27,7 +27,7 @@ The first prototype includes:
 - Reproducible mission IDs with controlled cargo and deposit randomization
 - A late-mission meteor shower with readable impact warnings and physical blast force
 - Suit integrity, cargo-dropping knockdowns, and hold-to-reboot recovery
-- Seven mission deposits spanning light, fragile, heavy, pressurized, archival, and magnetic cargo
+- Seven Practice Moon deposits and eight Rust Belt deposits spanning light, fragile, heavy, pressurized, archival, and magnetic cargo
 - Bouncy Helium-3 Canisters and delicate Lunar Microfossils with distinct silhouettes and handling
 - Cargo condition and value loss from reckless airborne or high-speed drops
 - Low-gravity cargo throwing with weight-sensitive arcs and landing damage
@@ -48,7 +48,9 @@ The first prototype includes:
 - Host-authoritative scanning, drilling, cargo ownership, throwing, deposits, timer, and results
 - Crew roster, round-trip latency display, location pings, and clean host-disconnect recovery
 - A physics tether gun with a forgiving 16m lock range and predictable 19m cable break
-- An 18m magnetic retriever that yanks loose metal into dangerous low-gravity flight
+- An 18m polarity manipulator that attracts or repels loose metal into dangerous low-gravity flight
+- A three-relay Rust Belt facility objective that unlocks a derelict government-surplus vault
+- A Rust-exclusive Prototype Flux Core and physical mag-rail cargo launcher
 - Two-charge sample stabilizer foam that restores damaged carried cargo
 - Two-scientist team lift that makes dense Platinum Cores substantially easier to haul
 - Quick help, cargo, danger, and return-to-ship callouts that do not require voice chat
@@ -98,7 +100,8 @@ using the public build can review and add to the same development log.
 | P | Ping your position to the connected crew |
 | T | Tether or release nearby loose cargo |
 | H | Hitch or release the nearby cargo cart |
-| G | Magnetic retriever for loose metal within 18m |
+| G | Fire the polarity manipulator or align a nearby Rust Belt relay |
+| V | Flip the polarity manipulator between attract and repel |
 | C | Use stabilizer foam on damaged carried cargo |
 | 1 / 2 / 3 / 4 | Call for help / mark cargo / mark danger / call return to ship |
 
@@ -115,11 +118,12 @@ using the public build can review and add to the same development log.
 | Right trigger | Operate selected harvesting tool |
 | Left bumper | Tether / release |
 | Left stick click | Hitch / release cargo cart |
-| Left trigger | Magnetic retriever |
+| Left trigger | Fire polarity manipulator / align relay |
 | Right stick click | Stabilizer foam |
 | Right bumper | Throw carried cargo |
 | B / Circle | Repair jammed drill / back out of menus |
-| D-pad | Crew help, cargo, danger, and ship callouts |
+| D-pad up | Flip polarity mode |
+| D-pad right / down / left | Mark cargo / danger / return to ship |
 | Menu / Start | Open Control Tuning |
 
 Menus show a cyan focus outline. Use the D-pad or left stick to move, A/Cross to
@@ -148,7 +152,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 029 begins Milestone 10: Content Pipeline with a playable second destination. The Rust Belt introduces weaker gravity, iron-heavy survey manifests, two contracts, metallic terrain, drifting orbital scrap, earlier debris convergence, and periodic polarity surges that pull loose magnetic cargo and unattended loaded carts. A retro-NASA presentation pass adds labeled ship/cart hardware, warmer industrial lighting, destination telemetry, new tool cues, and separate Practice Moon and Rust Belt ambient soundscapes. Remaining work includes deeper destination events, new Rust Belt-exclusive resources, remappable action bindings, broader accessibility auditing, and measured hardware compatibility passes.
+Build 030 deepens Milestone 10 with Polarity Annex 6, a worn government-surplus processing station in the Rust Belt. Players switch the polarity manipulator between attract and repel, align three relays, open a derelict vault, recover the Rust-exclusive Prototype Flux Core, and feed magnetic cargo into a physical mag-rail aimed optimistically at the ship receiver. Relay, vault, rail, cargo, and polarity state synchronize through Crew Link. Remaining work includes more derelict-facility interactions, remappable action bindings, broader accessibility auditing, and measured hardware compatibility passes.
 
 ## Design references
 

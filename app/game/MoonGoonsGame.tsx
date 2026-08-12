@@ -14,6 +14,7 @@ import {
   CREW_INPUT_DOWNED,
   CREW_INPUT_DRILL,
   CREW_INPUT_MOVING,
+  CREW_INPUT_POLARITY_REPEL,
   CREW_INPUT_TOOL_CORER,
   CREW_INPUT_TOOL_SIPHON,
   CREW_INPUT_THRUSTER,
@@ -35,7 +36,9 @@ import {
   TETHER_BREAK_RANGE,
   TETHER_LOCK_RANGE,
   TETHER_MAX_OWNERS,
+  RUST_RELAY_REQUIREMENTS,
   advanceSuitRecovery,
+  alignRustRelay,
   applySuitDamage as calculateSuitDamage,
   canAirmailCargo,
   canHarvestCargo,
@@ -64,6 +67,7 @@ import {
   type ControlSettings,
   type DepositDefinition,
   type HarvestToolId,
+  type MagneticPolarity,
 } from "./gameRules";
 import {
   CONTRACTS,
@@ -194,6 +198,9 @@ type Snapshot = {
   message: string;
   scanCooldown: number;
   magnetCooldown: number;
+  polarityMode: PolarityMode;
+  facilityRelays: number;
+  facilityVaultOpen: boolean;
   stabilizerCharges: number;
   cartCargoCount: number;
   cartCapacity: number;
@@ -1074,6 +1081,47 @@ function createDeposit(
     canister.add(body, topCap, bottomCap, valve, bumper, lowerBumper);
     canister.rotation.z = -0.14;
     core = canister;
+  } else if (definition.kind === "flux_core") {
+    const fluxCore = new THREE.Group();
+    const reactor = new THREE.Mesh(
+      new THREE.IcosahedronGeometry(0.68, 1),
+      new THREE.MeshPhysicalMaterial({
+        color: data.color,
+        emissive: data.emissive,
+        emissiveIntensity: 3.4,
+        metalness: 0.48,
+        roughness: 0.2,
+        clearcoat: 0.72,
+        clearcoatRoughness: 0.16,
+      }),
+    );
+    const cage = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(1.08, 0),
+      new THREE.MeshBasicMaterial({
+        color: palette.cream,
+        wireframe: true,
+        transparent: true,
+        opacity: 0.72,
+      }),
+    );
+    const gyroMaterial = standardMaterial(palette.coral, {
+      emissive: data.emissive,
+      emissiveIntensity: 2.4,
+      metalness: 0.76,
+      roughness: 0.22,
+    });
+    const gyroA = new THREE.Mesh(
+      new THREE.TorusGeometry(0.92, 0.085, 8, 28),
+      gyroMaterial,
+    );
+    gyroA.rotation.x = Math.PI / 2;
+    const gyroB = gyroA.clone();
+    gyroB.rotation.set(Math.PI / 3, Math.PI / 2, 0);
+    const gyroC = gyroA.clone();
+    gyroC.rotation.set(-Math.PI / 3, Math.PI / 2, 0);
+    fluxCore.add(reactor, cage, gyroA, gyroB, gyroC);
+    fluxCore.rotation.set(0.18, 0.3, -0.12);
+    core = fluxCore;
   } else if (definition.kind === "fossil") {
     const fossil = new THREE.Group();
     const tablet = new THREE.Mesh(
@@ -1360,6 +1408,151 @@ function createMagneticField() {
   field.userData.active = false;
   field.userData.warning = false;
   return field;
+}
+
+function createRustProcessingStation() {
+  const station = new THREE.Group();
+  station.position.set(18, 0, -12);
+  station.rotation.y = -0.22;
+
+  const fadedCream = 0xbab29a;
+  const oxidizedSteel = 0x60433b;
+  const darkSteel = 0x26252a;
+  const structure = new THREE.Group();
+  structure.add(box([11.5, 0.42, 7.8], darkSteel, [0, 0.18, 0], {
+    metalness: 0.62,
+    roughness: 0.68,
+  }));
+  structure.add(box([9.4, 3.8, 5.8], fadedCream, [0.8, 2.15, 0.5], {
+    metalness: 0.36,
+    roughness: 0.82,
+  }));
+  structure.add(box([9.65, 0.56, 6.02], 0xb65d3e, [0.8, 2.8, 0.5], {
+    metalness: 0.42,
+    roughness: 0.76,
+  }));
+  structure.add(box([4.4, 1.9, 0.38], darkSteel, [0.8, 1.18, -2.47], {
+    metalness: 0.68,
+    roughness: 0.48,
+  }));
+  const label = createCorporateLabel(
+    "POLARITY ANNEX 6",
+    "FEDERAL SURPLUS · INSPECTION OVERDUE 14 YEARS",
+    4.4,
+    0.82,
+  );
+  label.position.set(0.8, 3.55, -2.52);
+  structure.add(label);
+
+  const vaultDoor = box([3.55, 2.8, 0.48], 0x4c4c49, [0.8, 1.52, -2.7], {
+    metalness: 0.76,
+    roughness: 0.5,
+  });
+  vaultDoor.userData.closedY = 1.52;
+  vaultDoor.userData.openY = 4.62;
+  structure.add(vaultDoor);
+  const vaultWheel = new THREE.Mesh(
+    new THREE.TorusGeometry(0.58, 0.09, 8, 22),
+    standardMaterial(0xa4a092, { metalness: 0.78, roughness: 0.38 }),
+  );
+  vaultWheel.position.set(0.8, 1.52, -3.02);
+  structure.add(vaultWheel);
+  const vaultLight = new THREE.PointLight(palette.coral, 7, 12, 2);
+  vaultLight.position.set(0.8, 3.05, -3.25);
+  structure.add(vaultLight);
+
+  const rail = new THREE.Group();
+  rail.position.set(-6.2, 0.35, 0.2);
+  rail.rotation.y = 0.2;
+  const leftRail = box([7.8, 0.18, 0.2], oxidizedSteel, [0, 0.45, -0.72], {
+    metalness: 0.82,
+    roughness: 0.44,
+  });
+  const rightRail = leftRail.clone();
+  rightRail.position.z = 0.72;
+  rail.add(leftRail, rightRail);
+  const railCoils: THREE.Mesh[] = [];
+  for (let index = 0; index < 6; index += 1) {
+    const coil = new THREE.Mesh(
+      new THREE.TorusGeometry(0.92, 0.07, 8, 22),
+      standardMaterial(index % 2 === 0 ? 0xa75438 : 0x7c6d5e, {
+        emissive: 0x4a1915,
+        emissiveIntensity: 0.3,
+        metalness: 0.72,
+        roughness: 0.5,
+      }),
+    );
+    coil.position.set(-3.2 + index * 1.3, 1.05, 0);
+    coil.rotation.y = Math.PI / 2;
+    rail.add(coil);
+    railCoils.push(coil);
+  }
+  const intakePoint = new THREE.Object3D();
+  intakePoint.position.set(-3.8, 0.85, 0);
+  rail.add(intakePoint);
+  const exitPoint = new THREE.Object3D();
+  exitPoint.position.set(4.1, 1.25, 0);
+  rail.add(exitPoint);
+  const railLabel = createCorporateLabel("MAG-RAIL", "KEEP LIMBS / LUNCH / CLIPBOARDS CLEAR", 2.7, 0.6);
+  railLabel.position.set(-0.2, 0.25, -1.05);
+  railLabel.rotation.x = -0.18;
+  rail.add(railLabel);
+  station.add(structure, rail);
+
+  const relayOffsets: Array<[number, number, number]> = [
+    [-5.2, 0, -4.3],
+    [5.7, 0, -3.8],
+    [4.8, 0, 4.4],
+  ];
+  const relays = relayOffsets.map((offset, index) => {
+    const relay = new THREE.Group();
+    relay.position.set(...offset);
+    relay.add(cylinder(0.72, 0.92, 1.5, darkSteel, [0, 0.75, 0], 10, {
+      metalness: 0.7,
+      roughness: 0.54,
+    }));
+    relay.add(cylinder(0.42, 0.52, 1.05, oxidizedSteel, [0, 1.8, 0], 10, {
+      metalness: 0.66,
+      roughness: 0.62,
+    }));
+    const ring = new THREE.Mesh(
+      new THREE.TorusGeometry(0.86, 0.08, 8, 28),
+      new THREE.MeshBasicMaterial({
+        color: RUST_RELAY_REQUIREMENTS[index] === "attract" ? palette.cyan : palette.coral,
+        transparent: true,
+        opacity: 0.38,
+      }),
+    );
+    ring.position.y = 2.32;
+    ring.rotation.x = Math.PI / 2;
+    relay.add(ring);
+    const light = new THREE.PointLight(
+      RUST_RELAY_REQUIREMENTS[index] === "attract" ? palette.cyan : palette.coral,
+      2,
+      8,
+      2,
+    );
+    light.position.y = 2.4;
+    relay.add(light);
+    relay.userData.ring = ring;
+    relay.userData.light = light;
+    relay.userData.requirement = RUST_RELAY_REQUIREMENTS[index];
+    relay.userData.index = index;
+    station.add(relay);
+    return relay;
+  });
+
+  station.userData.relays = relays;
+  station.userData.vaultDoor = vaultDoor;
+  station.userData.vaultWheel = vaultWheel;
+  station.userData.vaultLight = vaultLight;
+  station.userData.railCoils = railCoils;
+  station.userData.intakePoint = intakePoint;
+  station.userData.exitPoint = exitPoint;
+  station.userData.relayMask = 0;
+  station.userData.vaultOpen = false;
+  station.userData.railPulse = 0;
+  return station;
 }
 
 function createStars() {
@@ -1682,12 +1875,16 @@ function createWorld(scene: THREE.Scene, destinationId: DestinationId) {
   const pressureVents = destinationId === "practice_moon" ? createPressureVents() : [];
   const floatingDebris = destinationId === "rust_belt" ? createFloatingRustDebris() : new THREE.Group();
   const magneticField = destinationId === "rust_belt" ? createMagneticField() : new THREE.Group();
+  const processingStation = destinationId === "rust_belt"
+    ? createRustProcessingStation()
+    : new THREE.Group();
   root.add(ship);
   root.add(cargoReceiver);
   root.add(rover);
   root.add(meteorStreaks);
   root.add(floatingDebris);
   root.add(magneticField);
+  root.add(processingStation);
   pressureVents.forEach((vent) => root.add(vent));
 
   const earth = new THREE.Mesh(
@@ -1729,6 +1926,7 @@ function createWorld(scene: THREE.Scene, destinationId: DestinationId) {
     pressureVents,
     floatingDebris,
     magneticField,
+    processingStation,
   };
 }
 
@@ -1765,6 +1963,7 @@ export function MoonGoonsGame() {
   const suitRecoveriesRef = useRef(0);
   const scanCooldownRef = useRef(0);
   const magnetCooldownRef = useRef(0);
+  const polarityModeRef = useRef<MagneticPolarity>("attract");
   const stabilizerChargesRef = useRef(2);
   const messageRef = useRef(INITIAL_MESSAGE);
   const carryingRef = useRef<number | null>(null);
@@ -1887,6 +2086,9 @@ export function MoonGoonsGame() {
     message: INITIAL_MESSAGE,
     scanCooldown: 0,
     magnetCooldown: 0,
+    polarityMode: "attract",
+    facilityRelays: 0,
+    facilityVaultOpen: false,
     stabilizerCharges: 2,
     cartCargoCount: 0,
     cartCapacity: CART_CAPACITY,
@@ -2154,6 +2356,7 @@ export function MoonGoonsGame() {
         | "break"
         | "step"
         | "repair"
+        | "relay"
         | "storm"
         | "drill"
         | "siphon",
@@ -2180,12 +2383,13 @@ export function MoonGoonsGame() {
           break: [640, 88, 0.42],
           step: [92, 72, 0.055],
           repair: [125, 540, 0.14],
+          relay: [182, 1180, 0.46],
           storm: [74, 510, 0.72],
           drill: [118, 86, 0.34],
           siphon: [210, 470, 0.28],
         }[tone];
         oscillator.type =
-          tone === "warning" || tone === "repair" || tone === "break" || tone === "storm"
+          tone === "warning" || tone === "repair" || tone === "relay" || tone === "break" || tone === "storm"
             ? "square"
             : tone === "step" || tone === "drill"
               ? "triangle"
@@ -2197,6 +2401,8 @@ export function MoonGoonsGame() {
             ? 0.018
             : tone === "repair"
               ? 0.042
+              : tone === "relay"
+                ? 0.048
               : tone === "storm"
                 ? 0.035
                 : tone === "drill" || tone === "siphon"
@@ -2582,6 +2788,7 @@ export function MoonGoonsGame() {
     let previous = performance.now();
     let padTetherLatch = false;
     let padMagnetLatch = false;
+    let padPolarityLatch = false;
     let padStabilizerLatch = false;
     let padCartLatch = false;
     let padToolCycleLatch = false;
@@ -2625,6 +2832,19 @@ export function MoonGoonsGame() {
         (definition) => createDeposit(definition),
       );
       deposits.forEach((deposit) => scene.add(deposit.group));
+      const fluxCore = deposits.find((deposit) => deposit.kind === "flux_core");
+      if (fluxCore && world.destinationId === "rust_belt") {
+        const vaultPosition = world.processingStation.localToWorld(
+          new THREE.Vector3(0.8, 0.78, -1.65),
+        );
+        fluxCore.group.position.copy(vaultPosition);
+        fluxCore.position = fluxCore.group.position;
+        fluxCore.group.visible = false;
+        fluxCore.shell.visible = false;
+        fluxCore.core.visible = false;
+        fluxCore.ring.visible = false;
+        fluxCore.methodMarker.visible = false;
+      }
     };
 
     const tetherOwnerPosition = (ownerId: string) => {
@@ -2687,10 +2907,102 @@ export function MoonGoonsGame() {
       sound("pickup");
     };
 
+    const updateFacilityVisuals = () => {
+      const station = world.processingStation;
+      if (world.destinationId !== "rust_belt") return;
+      const relayMask = Number(station.userData.relayMask ?? 0);
+      const vaultOpen = Boolean(station.userData.vaultOpen);
+      const relays = station.userData.relays as THREE.Group[];
+      relays.forEach((relay, index) => {
+        const aligned = (relayMask & (1 << index)) !== 0;
+        const ring = relay.userData.ring as THREE.Mesh;
+        const light = relay.userData.light as THREE.PointLight;
+        (ring.material as THREE.MeshBasicMaterial).opacity = aligned ? 0.92 : 0.34;
+        ring.scale.setScalar(aligned ? 1.16 : 1);
+        light.intensity = aligned ? 12 : 2;
+      });
+      const vaultDoor = station.userData.vaultDoor as THREE.Mesh;
+      const vaultWheel = station.userData.vaultWheel as THREE.Mesh;
+      const vaultLight = station.userData.vaultLight as THREE.PointLight;
+      vaultDoor.position.y = vaultOpen
+        ? Number(vaultDoor.userData.openY)
+        : Number(vaultDoor.userData.closedY);
+      vaultWheel.visible = !vaultOpen;
+      vaultLight.color.setHex(vaultOpen ? palette.green : palette.coral);
+      vaultLight.intensity = vaultOpen ? 14 : 7;
+    };
+
+    const releaseFluxCore = () => {
+      const fluxCore = deposits.find((deposit) => deposit.kind === "flux_core");
+      if (!fluxCore || fluxCore.state !== "hidden") return;
+      if (fluxCore.group.parent !== scene) scene.attach(fluxCore.group);
+      const releasePoint = world.processingStation.localToWorld(
+        new THREE.Vector3(0.8, 0.78, -3.7),
+      );
+      fluxCore.group.position.copy(releasePoint);
+      fluxCore.position = fluxCore.group.position;
+      fluxCore.state = "cargo";
+      fluxCore.condition = 1;
+      fluxCore.group.visible = true;
+      fluxCore.shell.visible = false;
+      fluxCore.core.visible = true;
+      fluxCore.ring.visible = true;
+      fluxCore.methodMarker.visible = false;
+      fluxCore.beacon.intensity = 12;
+    };
+
+    const tryAlignFacilityRelay = (
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+      mode: MagneticPolarity,
+    ) => {
+      if (world.destinationId !== "rust_belt") return false;
+      const station = world.processingStation;
+      const relays = station.userData.relays as THREE.Group[];
+      const target = relays
+        .map((relay) => ({
+          relay,
+          position: relay.getWorldPosition(new THREE.Vector3()),
+        }))
+        .sort(
+          (a, b) =>
+            a.position.distanceTo(ownerPosition) - b.position.distanceTo(ownerPosition),
+        )[0];
+      if (!target || target.position.distanceTo(ownerPosition) > 4.2) return false;
+      const index = Number(target.relay.userData.index);
+      const currentMask = Number(station.userData.relayMask ?? 0);
+      const alignment = alignRustRelay(currentMask, index, mode);
+      if ((currentMask & (1 << index)) !== 0) {
+        messageRef.current = `RELAY ${index + 1} ALREADY STABLE. ${ownerName} may redirect their expertise.`;
+        return true;
+      }
+      if (!alignment.accepted) {
+        messageRef.current = `RELAY ${index + 1} REJECTED ${mode.toUpperCase()} POLARITY. TAP V AND TRY THE OTHER BAD IDEA.`;
+        sound("warning");
+        return true;
+      }
+      const nextMask = alignment.relayMask;
+      station.userData.relayMask = nextMask;
+      station.userData.vaultOpen = alignment.vaultOpen;
+      updateFacilityVisuals();
+      if (nextMask === 0b111) {
+        releaseFluxCore();
+        messageRef.current = `${ownerName} RESTORED POLARITY ANNEX 6. VAULT OPEN // PROTOTYPE FLUX CORE RELEASED.`;
+        sound("secure");
+      } else {
+        const alignedCount = nextMask.toString(2).replace(/0/g, "").length;
+        messageRef.current = `${ownerName} ALIGNED RELAY ${index + 1} (${alignedCount}/3). THE ANNEX HAS RESUMED HUMMING.`;
+        sound("relay");
+      }
+      return true;
+    };
+
     const fireMagneticRetriever = (
       ownerName: string,
       ownerPosition: THREE.Vector3,
+      mode: MagneticPolarity,
     ) => {
+      if (tryAlignFacilityRelay(ownerName, ownerPosition, mode)) return true;
       const target = deposits
         .filter(
           (deposit) =>
@@ -2705,22 +3017,70 @@ export function MoonGoonsGame() {
         )[0];
       const distance = target?.group.position.distanceTo(ownerPosition) ?? Infinity;
       if (!target || distance > 18) {
-        messageRef.current = `${ownerName}'s magnetic retriever found no cooperative metal within 18m.`;
+        messageRef.current = `${ownerName}'s polarity manipulator found no cooperative metal within 18m.`;
         return false;
       }
 
       if (target.group.parent !== scene) scene.attach(target.group);
-      const pullDirection = ownerPosition
-        .clone()
-        .add(new THREE.Vector3(0, 1.3, 0))
-        .sub(target.group.position)
-        .normalize();
+      const operatorAnchor = ownerPosition.clone().add(new THREE.Vector3(0, 1.3, 0));
+      const pullDirection = mode === "attract"
+        ? operatorAnchor.sub(target.group.position).normalize()
+        : target.group.position.clone().sub(operatorAnchor).normalize();
       target.tetherOwnerIds = [];
       target.isBallistic = true;
       target.bounceCount = 0;
       target.velocity.copy(pullDirection).multiplyScalar(8.6 + Math.min(4, distance * 0.2));
-      target.velocity.y = Math.max(2.6, target.velocity.y + 1.8);
-      messageRef.current = `${ownerName} magnet-yanked ${cargoData[target.kind].name}. Ducking is now optional but wise.`;
+      target.velocity.y = Math.max(mode === "attract" ? 2.6 : 3.2, target.velocity.y + 1.8);
+      messageRef.current = mode === "attract"
+        ? `${ownerName} magnet-yanked ${cargoData[target.kind].name}. Ducking is now optional but wise.`
+        : `${ownerName} polarity-kicked ${cargoData[target.kind].name}. Someone should begin chasing it.`;
+      sound("launch");
+      return true;
+    };
+
+    const polarityActionCooldown = (ownerPosition: THREE.Vector3) => {
+      if (world.destinationId !== "rust_belt") return 6.5;
+      const nearRelay = (world.processingStation.userData.relays as THREE.Group[]).some(
+        (relay) =>
+          relay
+            .getWorldPosition(new THREE.Vector3())
+            .distanceTo(ownerPosition) <= 4.2,
+      );
+      return nearRelay ? 0.85 : 6.5;
+    };
+
+    const launchCargoByMagRail = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      if (world.destinationId !== "rust_belt") return false;
+      const held = deposits.find((deposit) => deposit.ownerId === ownerId);
+      if (!held || !cargoData[held.kind].magnetic) return false;
+      const intake = (world.processingStation.userData.intakePoint as THREE.Object3D)
+        .getWorldPosition(new THREE.Vector3());
+      if (ownerPosition.distanceTo(intake) > 5) return false;
+      const exit = (world.processingStation.userData.exitPoint as THREE.Object3D)
+        .getWorldPosition(new THREE.Vector3());
+      if (held.group.parent !== scene) scene.attach(held.group);
+      held.group.position.copy(exit);
+      const receiverTarget = CARGO_RECEIVER_POSITION.clone().setY(2.35);
+      const launchOffset = receiverTarget.clone().sub(exit);
+      const horizontalDistance = Math.hypot(launchOffset.x, launchOffset.z);
+      const flightTime = THREE.MathUtils.clamp(horizontalDistance / 11.5, 2.15, 3.25);
+      held.velocity.set(
+        launchOffset.x / flightTime,
+        (launchOffset.y + 0.5 * world.gravity * flightTime * flightTime) /
+          flightTime,
+        launchOffset.z / flightTime,
+      );
+      held.ownerId = null;
+      held.tetherOwnerIds = [];
+      held.isBallistic = true;
+      held.bounceCount = 0;
+      carryingRef.current = carryingRef.current === held.id ? null : carryingRef.current;
+      world.processingStation.userData.railPulse = 1;
+      messageRef.current = `${ownerName} FIRED ${cargoData[held.kind].name.toUpperCase()} DOWN THE MAG-RAIL. RECEIVER SOLUTION CALIBRATED // STORMS VOID WARRANTY.`;
       sound("launch");
       return true;
     };
@@ -2821,6 +3181,7 @@ export function MoonGoonsGame() {
       repairLatchRef.current = false;
       scanCooldownRef.current = 0;
       magnetCooldownRef.current = 0;
+      polarityModeRef.current = "attract";
       stabilizerChargesRef.current = 2;
       magnetLatchRef.current = false;
       stabilizerLatchRef.current = false;
@@ -2858,6 +3219,10 @@ export function MoonGoonsGame() {
         meteor.meteor.visible = false;
         meteor.light.intensity = 0;
       });
+      world.processingStation.userData.relayMask = 0;
+      world.processingStation.userData.vaultOpen = false;
+      world.processingStation.userData.railPulse = 0;
+      updateFacilityVisuals();
       cartOwnerId = null;
       cartCargoIds = [];
       world.rover.position.set(-7.5, 0.3, 7.2);
@@ -2974,12 +3339,24 @@ export function MoonGoonsGame() {
           messageRef.current = `Magnetic retriever recharging: ${magnetCooldownRef.current.toFixed(1)}s.`;
         } else if (session?.role === "guest") {
           queueCrewAction("magnet");
-          magnetCooldownRef.current = 6.5;
+          magnetCooldownRef.current = polarityActionCooldown(astronaut.position);
           messageRef.current = "Magnetic retrieval request sent to mission lead authority.";
           sound("scan");
-        } else if (fireMagneticRetriever(session?.name ?? "SOLO GOON", astronaut.position)) {
-          magnetCooldownRef.current = 6.5;
+        } else if (
+          fireMagneticRetriever(
+            session?.name ?? "SOLO GOON",
+            astronaut.position,
+            polarityModeRef.current,
+          )
+        ) {
+          magnetCooldownRef.current = polarityActionCooldown(astronaut.position);
         }
+      }
+      if (event.code === "KeyV" && !event.repeat && phaseRef.current === "active") {
+        polarityModeRef.current =
+          polarityModeRef.current === "attract" ? "repel" : "attract";
+        messageRef.current = `POLARITY MANIPULATOR // ${polarityModeRef.current.toUpperCase()} MODE.`;
+        sound("scan");
       }
       if (event.code === "KeyC" && !event.repeat && phaseRef.current === "active") {
         const session = crewSessionRef.current;
@@ -3329,6 +3706,16 @@ export function MoonGoonsGame() {
         world.rover.rotation.y = state.cart.yaw;
       }
 
+      if (state.facility && world.destinationId === "rust_belt") {
+        world.processingStation.userData.relayMask = state.facility.relayMask;
+        world.processingStation.userData.vaultOpen = state.facility.vaultOpen;
+        world.processingStation.userData.railPulse = Math.max(
+          Number(world.processingStation.userData.railPulse ?? 0),
+          state.facility.railPulse,
+        );
+        updateFacilityVisuals();
+      }
+
       const localMemberId = crewSessionRef.current?.memberId ?? null;
       carryingRef.current = null;
       state.deposits.forEach((incoming) => {
@@ -3374,6 +3761,8 @@ export function MoonGoonsGame() {
           deposits.forEach((deposit) => {
             if (
               deposit.state === "hidden" &&
+              (deposit.kind !== "flux_core" ||
+                Boolean(world.processingStation.userData.vaultOpen)) &&
               deposit.group.position.distanceTo(memberPosition) < 16
             ) {
               deposit.state = "revealed";
@@ -3406,7 +3795,13 @@ export function MoonGoonsGame() {
         }
 
         if (action.type === "magnet") {
-          fireMagneticRetriever(member.name, memberPosition);
+          fireMagneticRetriever(
+            member.name,
+            memberPosition,
+            (member.inputMask & CREW_INPUT_POLARITY_REPEL) !== 0
+              ? "repel"
+              : "attract",
+          );
           return;
         }
 
@@ -3422,6 +3817,12 @@ export function MoonGoonsGame() {
 
         const held = deposits.find((deposit) => deposit.ownerId === member.id);
         if (held) {
+          if (
+            action.type === "interact" &&
+            launchCargoByMagRail(member.id, member.name, memberPosition)
+          ) {
+            return;
+          }
           if (
             action.type === "interact" &&
             memberPosition.distanceTo(CARGO_RECEIVER_POSITION) < 3.8
@@ -3705,19 +4106,28 @@ export function MoonGoonsGame() {
           messageRef.current = `Magnetic retriever recharging: ${magnetCooldownRef.current.toFixed(1)}s.`;
         } else if (activeSession?.role === "guest") {
           queueCrewAction("magnet");
-          magnetCooldownRef.current = 6.5;
+          magnetCooldownRef.current = polarityActionCooldown(astronaut.position);
           messageRef.current = "Magnetic retrieval request sent to mission lead authority.";
           sound("scan");
         } else if (
           fireMagneticRetriever(
             activeSession?.name ?? "SOLO GOON",
             astronaut.position,
+            polarityModeRef.current,
           )
         ) {
-          magnetCooldownRef.current = 6.5;
+          magnetCooldownRef.current = polarityActionCooldown(astronaut.position);
         }
       }
       padMagnetLatch = pad.magnet;
+
+      if (pad.polarityToggle && !padPolarityLatch && gameplayInputEnabled) {
+        polarityModeRef.current =
+          polarityModeRef.current === "attract" ? "repel" : "attract";
+        messageRef.current = `POLARITY MANIPULATOR // ${polarityModeRef.current.toUpperCase()} MODE.`;
+        sound("scan");
+      }
+      padPolarityLatch = pad.polarityToggle;
 
       if (pad.stabilize && !padStabilizerLatch && gameplayInputEnabled) {
         const activeSession = crewSessionRef.current;
@@ -3827,6 +4237,23 @@ export function MoonGoonsGame() {
       let magneticStormWarning = false;
       let magneticStormActive = false;
       if (world.destinationId === "rust_belt") {
+        const station = world.processingStation;
+        const railPulse = Math.max(0, Number(station.userData.railPulse ?? 0) - dt * 1.15);
+        station.userData.railPulse = railPulse;
+        (station.userData.railCoils as THREE.Mesh[]).forEach((coil, index) => {
+          coil.rotation.x += dt * (0.35 + railPulse * (6 + index * 0.55));
+          const coilMaterial = coil.material as THREE.MeshStandardMaterial;
+          coilMaterial.emissiveIntensity = THREE.MathUtils.damp(
+            coilMaterial.emissiveIntensity,
+            0.28 + railPulse * 3.6,
+            12,
+            dt,
+          );
+        });
+        (station.userData.relays as THREE.Group[]).forEach((relay, index) => {
+          const ring = relay.userData.ring as THREE.Mesh;
+          ring.rotation.z += dt * (0.22 + index * 0.07);
+        });
         const fieldTime = now * 0.001 + (missionSeedRef.current % 17) * 0.31;
         const fieldCycle = Math.floor(fieldTime / 19);
         const fieldPhase = fieldTime % 19;
@@ -4317,6 +4744,8 @@ export function MoonGoonsGame() {
             deposits.forEach((deposit) => {
               if (
                 deposit.state === "hidden" &&
+                (deposit.kind !== "flux_core" ||
+                  Boolean(world.processingStation.userData.vaultOpen)) &&
                 deposit.position.distanceTo(astronaut.position) < scanRange
               ) {
                 deposit.state = "revealed";
@@ -4358,6 +4787,12 @@ export function MoonGoonsGame() {
             return;
           }
           deposit.group.rotation.y += dt * (deposit.state === "cargo" ? 0.58 : 0.16);
+          if (deposit.kind === "flux_core") {
+            deposit.core.rotation.y += dt * 1.8;
+            deposit.core.children.slice(2).forEach((gyro, gyroIndex) => {
+              gyro.rotation.z += dt * (1.4 + gyroIndex * 0.48);
+            });
+          }
           deposit.harvestPulse = Math.max(0, deposit.harvestPulse - dt * 3.8);
           const extractionPulse = deposit.harvestPulse * 0.34;
           deposit.ring.scale.setScalar(
@@ -4886,7 +5321,16 @@ export function MoonGoonsGame() {
           } else if (carryingRef.current !== null) {
             const held = deposits.find((deposit) => deposit.id === carryingRef.current);
             if (held) {
-              if (astronaut.position.distanceTo(CARGO_RECEIVER_POSITION) < 3.8) {
+              if (
+                !throwInput &&
+                launchCargoByMagRail(
+                  session?.memberId ?? "solo",
+                  session?.name ?? "SOLO GOON",
+                  astronaut.position,
+                )
+              ) {
+                // Mag-rail owns the cargo release and launch trajectory.
+              } else if (astronaut.position.distanceTo(CARGO_RECEIVER_POSITION) < 3.8) {
                 held.state = "secured";
                 held.ownerId = null;
                 held.tetherOwnerIds = [];
@@ -5056,6 +5500,9 @@ export function MoonGoonsGame() {
         networkInputMask |= CREW_INPUT_THRUSTER;
       }
       if (downedRef.current) networkInputMask |= CREW_INPUT_DOWNED;
+      if (polarityModeRef.current === "repel") {
+        networkInputMask |= CREW_INPUT_POLARITY_REPEL;
+      }
       localPresenceRef.current = {
         x: astronaut.position.x,
         y: astronaut.position.y,
@@ -5246,6 +5693,23 @@ export function MoonGoonsGame() {
         const cartReceiverDistance = world.rover.position.distanceTo(
           CARGO_RECEIVER_POSITION,
         );
+        const railIntakeDistance =
+          world.destinationId === "rust_belt"
+            ? (world.processingStation.userData.intakePoint as THREE.Object3D)
+                .getWorldPosition(new THREE.Vector3())
+                .distanceTo(astronaut.position)
+            : Infinity;
+        const nearbyRelay =
+          world.destinationId === "rust_belt"
+            ? (world.processingStation.userData.relays as THREE.Group[])
+                .map((relay) => ({
+                  relay,
+                  distance: relay
+                    .getWorldPosition(new THREE.Vector3())
+                    .distanceTo(astronaut.position),
+                }))
+                .sort((a, b) => a.distance - b.distance)[0]
+            : null;
         const nearbyCargo = deposits
           .filter(
             (deposit) =>
@@ -5337,7 +5801,9 @@ export function MoonGoonsGame() {
           : "Q · SCAN FOR VALUABLE MATERIAL";
         if (held) {
           prompt =
-            receiverDistance < 3.8
+            railIntakeDistance < 5 && cargoData[held.kind].magnetic
+              ? `E · LOAD MAG-RAIL // ${cargoData[held.kind].name.toUpperCase()} · BAY TRAJECTORY`
+              : receiverDistance < 3.8
               ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
               : cartDistance < 4.5 && canLoadCargoCart(cartCargoIds.length)
                 ? `E · LOAD ${cargoData[
@@ -5367,13 +5833,23 @@ export function MoonGoonsGame() {
             nearbyCargo.kind
           ].name.toUpperCase()} · ${cargoData[nearbyCargo.kind].structure}`;
         } else if (
+          nearbyRelay &&
+          nearbyRelay.distance <= 4.2 &&
+          (Number(world.processingStation.userData.relayMask ?? 0) &
+            (1 << Number(nearbyRelay.relay.userData.index))) ===
+            0
+        ) {
+          const requiredMode = nearbyRelay.relay.userData
+            .requirement as MagneticPolarity;
+          prompt = `G · ALIGN RELAY ${Number(nearbyRelay.relay.userData.index) + 1} · REQUIRES ${requiredMode.toUpperCase()} · V FLIPS POLARITY`;
+        } else if (
           magneticCargo &&
           magneticCargo.position.distanceTo(astronaut.position) <= 18 &&
           magnetCooldownRef.current <= 0
         ) {
-          prompt = `G · MAG-YANK ${cargoData[magneticCargo.kind].name.toUpperCase()} · ${Math.round(
+          prompt = `G · ${polarityModeRef.current === "attract" ? "MAG-YANK" : "POLARITY-KICK"} ${cargoData[magneticCargo.kind].name.toUpperCase()} · ${Math.round(
             magneticCargo.position.distanceTo(astronaut.position),
-          )}m`;
+          )}m · V ${polarityModeRef.current.toUpperCase()}`;
         } else if (cartDistance < 4.5) {
           prompt =
             cartOwnerId === hudOwnerId
@@ -5489,6 +5965,14 @@ export function MoonGoonsGame() {
               ownerId: cartOwnerId,
               cargoIds: [...cartCargoIds],
             },
+            facility:
+              world.destinationId === "rust_belt"
+                ? {
+                    relayMask: Number(world.processingStation.userData.relayMask ?? 0),
+                    vaultOpen: Boolean(world.processingStation.userData.vaultOpen),
+                    railPulse: Number(world.processingStation.userData.railPulse ?? 0),
+                  }
+                : undefined,
             deposits: deposits.map((deposit) => {
               const worldPosition = deposit.group.getWorldPosition(new THREE.Vector3());
               return {
@@ -5552,6 +6036,11 @@ export function MoonGoonsGame() {
           message: messageRef.current,
           scanCooldown: scanCooldownRef.current,
           magnetCooldown: magnetCooldownRef.current,
+          polarityMode: polarityModeRef.current,
+          facilityRelays: Number(world.processingStation.userData.relayMask ?? 0)
+            .toString(2)
+            .replace(/0/g, "").length,
+          facilityVaultOpen: Boolean(world.processingStation.userData.vaultOpen),
           stabilizerCharges: stabilizerChargesRef.current,
           cartCargoCount: cartCargoIds.length,
           cartCapacity: CART_CAPACITY,
@@ -5715,6 +6204,9 @@ export function MoonGoonsGame() {
       message: messageRef.current,
       scanCooldown: 0,
       magnetCooldown: 0,
+      polarityMode: "attract",
+      facilityRelays: 0,
+      facilityVaultOpen: false,
       stabilizerCharges: 2,
       cartCargoCount: 0,
       cartCapacity: CART_CAPACITY,
@@ -5793,7 +6285,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 029 // RUST BELT SURVEY</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 030 // POLARITY ANNEX</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -6067,10 +6559,12 @@ export function MoonGoonsGame() {
               </strong>
             </div>
             <div className={styles.utilityToolStatus}>
-              <span>MAG RETRIEVER G</span>
+              <span>POLARITY MANIPULATOR G / V</span>
               <strong>
-                {snapshot.magnetCooldown <= 0
-                  ? "READY · METAL 18m"
+                {activeDestination.id === "rust_belt"
+                  ? `${snapshot.polarityMode.toUpperCase()} · ANNEX ${snapshot.facilityRelays}/3 · ${snapshot.facilityVaultOpen ? "VAULT OPEN" : "VAULT LOCKED"}`
+                  : snapshot.magnetCooldown <= 0
+                  ? `${snapshot.polarityMode.toUpperCase()} · METAL 18m`
                   : `CHARGING ${snapshot.magnetCooldown.toFixed(1)}s`}
               </strong>
             </div>
@@ -6113,6 +6607,7 @@ export function MoonGoonsGame() {
               <span><kbd>A</kbd> HOP / BOOST</span>
               <span><kbd>X</kbd> USE / CARGO</span>
               <span><kbd>RT</kbd> USE TOOL</span>
+              <span><kbd>D↑</kbd> FLIP POLARITY</span>
               <span><kbd>VIEW</kbd> CYCLE TOOL</span>
               <span><kbd>START</kbd> MENU</span>
             </div>
@@ -6150,6 +6645,10 @@ export function MoonGoonsGame() {
             <div>
               <kbd>Q</kbd>
               <span>SCAN</span>
+            </div>
+            <div>
+              <kbd>G / V</kbd>
+              <span>POLARITY / FLIP</span>
             </div>
           </div>
 

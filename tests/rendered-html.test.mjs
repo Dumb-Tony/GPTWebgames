@@ -193,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D The Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 029/);
+  assert.match(html, /BUILD 030/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -286,6 +286,11 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
       ownerId: null,
       cargoIds: [],
     },
+    facility: {
+      relayMask: 3,
+      vaultOpen: false,
+      railPulse: 0.65,
+    },
     deposits: [],
     stats: {
       repairsCompleted: 0,
@@ -365,6 +370,7 @@ test("Crew Link supports a two-player room, authoritative launch, cart action, a
   assert.equal(guestPoll.room.authoritativeState.message, "Cargo cart hitch accepted.");
   assert.equal(guestPoll.room.authoritativeState.contractId, "rust_belt_salvage");
   assert.equal(guestPoll.room.authoritativeState.cart.ownerId, guest.memberId);
+  assert.deepEqual(guestPoll.room.authoritativeState.facility, state.facility);
 
   const closeResponse = await fetch(crewUrl(host), {
     method: "DELETE",

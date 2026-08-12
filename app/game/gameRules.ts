@@ -41,9 +41,37 @@ export type CargoKind =
   | "platinum"
   | "vial"
   | "helium"
-  | "fossil";
+  | "fossil"
+  | "flux_core";
 
 export type HarvestToolId = "drill" | "corer" | "siphon";
+export type MagneticPolarity = "attract" | "repel";
+
+export const RUST_RELAY_REQUIREMENTS: readonly MagneticPolarity[] = [
+  "attract",
+  "repel",
+  "attract",
+];
+
+export function alignRustRelay(
+  relayMask: number,
+  relayIndex: number,
+  polarity: MagneticPolarity,
+) {
+  const safeMask = Math.max(0, Math.min(7, Math.trunc(relayMask)));
+  const requiredPolarity = RUST_RELAY_REQUIREMENTS[relayIndex];
+  if (!requiredPolarity) {
+    return { accepted: false, relayMask: safeMask, vaultOpen: safeMask === 7 };
+  }
+  if ((safeMask & (1 << relayIndex)) !== 0) {
+    return { accepted: true, relayMask: safeMask, vaultOpen: safeMask === 7 };
+  }
+  if (polarity !== requiredPolarity) {
+    return { accepted: false, relayMask: safeMask, vaultOpen: safeMask === 7 };
+  }
+  const nextMask = safeMask | (1 << relayIndex);
+  return { accepted: true, relayMask: nextMask, vaultOpen: nextMask === 7 };
+}
 
 export const HARVEST_TOOL_ORDER: readonly HarvestToolId[] = [
   "drill",
@@ -65,6 +93,7 @@ const cargoHarvestTools: Record<CargoKind, HarvestToolId> = {
   platinum: "drill",
   glass: "corer",
   fossil: "corer",
+  flux_core: "drill",
   vial: "siphon",
   helium: "siphon",
 };
@@ -212,6 +241,23 @@ export const cargoData: Record<CargoKind, CargoDefinition> = {
     throwLift: 3.35,
     magnetic: false,
   },
+  flux_core: {
+    name: "Prototype Flux Core",
+    value: 780,
+    speed: 0.62,
+    color: 0xe66e3f,
+    emissive: 0x8f241c,
+    structure: "EXPERIMENTAL // MAGNETIC",
+    impactThreshold: 3.8,
+    impactDamage: 0.018,
+    minimumCondition: 0.45,
+    breakSpeed: 13.2,
+    restitution: 0.63,
+    horizontalRetention: 0.89,
+    throwSpeed: 7.4,
+    throwLift: 3.7,
+    magnetic: true,
+  },
 };
 
 const depositSpawnPoints: Array<[number, number]> = [
@@ -266,7 +312,7 @@ const rustCargoKinds: CargoKind[] = [
   "glass",
   "platinum",
   "ferric",
-  "helium",
+  "flux_core",
 ];
 
 export function formatTime(seconds: number) {
