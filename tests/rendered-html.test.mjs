@@ -193,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D The Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 031/);
+  assert.match(html, /BUILD 032/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -237,7 +237,7 @@ test("crew endpoint validates an empty call sign without touching storage", asyn
   assert.equal(payload.error, "Use a call sign with at least two characters.");
 });
 
-test("Crew Link preserves queued actions, signals, rescue state, and clean shutdown", async () => {
+test("Crew Link preserves queued actions, cases, signals, rescue state, and clean shutdown", async () => {
   const createResponse = await fetch(new URL("/api/crew", baseUrl), {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -309,6 +309,17 @@ test("Crew Link preserves queued actions, signals, rescue state, and clean shutd
         remaining: 2.2,
       },
     ],
+    fieldToolCases: [
+      {
+        id: "field-case-corer",
+        toolId: "corer",
+        position: [8.5, 1.5, -3.25],
+        velocity: [4.2, 2.8, -1.4],
+        ownerId: null,
+        isBallistic: true,
+        bounceCount: 1,
+      },
+    ],
     deposits: [],
     stats: {
       repairsCompleted: 0,
@@ -364,6 +375,16 @@ test("Crew Link preserves queued actions, signals, rescue state, and clean shutd
   });
   assert.equal(rescueActionResponse.status, 200);
 
+  const toolThrowResponse = await fetch(crewUrl(guest), {
+    method: "PATCH",
+    headers: headersFor(guest),
+    body: JSON.stringify({
+      presence: { x: 9.1, y: 0, z: -2.7, yaw: 0.76, inputMask: 34 },
+      action: { sequence: 4, type: "tool_throw" },
+    }),
+  });
+  assert.equal(toolThrowResponse.status, 200);
+
   const hostPollResponse = await fetch(crewUrl(host), {
     headers: { "x-crew-token": host.token },
   });
@@ -373,13 +394,14 @@ test("Crew Link preserves queued actions, signals, rescue state, and clean shutd
   const remoteMember = hostPoll.room.members.find(
     (member) => member.id === guest.memberId,
   );
-  assert.equal(remoteMember.x, 9);
-  assert.equal(remoteMember.z, -2.8);
+  assert.equal(remoteMember.x, 9.1);
+  assert.equal(remoteMember.z, -2.7);
   assert.equal(remoteMember.inputMask, 34);
-  assert.equal(hostPoll.room.actions.length, 3);
+  assert.equal(hostPoll.room.actions.length, 4);
   assert.equal(hostPoll.room.actions[0].type, "cart_toggle");
   assert.equal(hostPoll.room.actions[1].type, "ping_cargo");
   assert.equal(hostPoll.room.actions[2].type, "rescue");
+  assert.equal(hostPoll.room.actions[3].type, "tool_throw");
 
   const acknowledgedState = {
     ...state,
@@ -396,7 +418,7 @@ test("Crew Link preserves queued actions, signals, rescue state, and clean shutd
     body: JSON.stringify({
       presence: { x: -12, y: 0, z: 5, yaw: 0, inputMask: 0 },
       authoritativeState: acknowledgedState,
-      ackActionId: hostPoll.room.actions[2].id,
+      ackActionId: hostPoll.room.actions[3].id,
     }),
   });
   assert.equal(acknowledgeResponse.status, 200);
@@ -406,7 +428,7 @@ test("Crew Link preserves queued actions, signals, rescue state, and clean shutd
   });
   assert.equal(guestPollResponse.status, 200);
   const guestPoll = await guestPollResponse.json();
-  assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[2].id);
+  assert.equal(guestPoll.room.actionCursor, hostPoll.room.actions[3].id);
   assert.equal(guestPoll.room.authoritativeState.message, "Cargo cart hitch accepted.");
   assert.equal(guestPoll.room.authoritativeState.contractId, "rust_belt_salvage");
   assert.equal(guestPoll.room.authoritativeState.cart.ownerId, guest.memberId);
@@ -415,6 +437,10 @@ test("Crew Link preserves queued actions, signals, rescue state, and clean shutd
   assert.deepEqual(
     guestPoll.room.authoritativeState.rescueAssists,
     state.rescueAssists,
+  );
+  assert.deepEqual(
+    guestPoll.room.authoritativeState.fieldToolCases,
+    state.fieldToolCases,
   );
 
   const closeResponse = await fetch(crewUrl(host), {

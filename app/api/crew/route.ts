@@ -21,6 +21,7 @@ const actionTypes = new Set<CrewActionType>([
   "magnet",
   "stabilize",
   "rescue",
+  "tool_throw",
   "cart_toggle",
   "ping",
   "ping_help",

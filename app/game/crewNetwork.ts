@@ -27,6 +27,7 @@ export type CrewActionType =
   | "magnet"
   | "stabilize"
   | "rescue"
+  | "tool_throw"
   | "cart_toggle"
   | "ping"
   | "ping_help"
@@ -99,6 +100,16 @@ export type CrewRescueAssist = {
   remaining: number;
 };
 
+export type CrewFieldToolCase = {
+  id: string;
+  toolId: "drill" | "corer" | "siphon";
+  position: [number, number, number];
+  velocity: [number, number, number];
+  ownerId: string | null;
+  isBallistic: boolean;
+  bounceCount: number;
+};
+
 export type CrewDepositState = {
   id: number;
   state:
@@ -139,6 +150,7 @@ export type CrewMissionState = {
   };
   pings?: CrewMissionPing[];
   rescueAssists?: CrewRescueAssist[];
+  fieldToolCases?: CrewFieldToolCase[];
   deposits: CrewDepositState[];
   stats: {
     repairsCompleted: number;

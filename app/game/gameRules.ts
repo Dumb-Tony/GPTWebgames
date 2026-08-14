@@ -12,6 +12,8 @@ export const TETHER_LOCK_RANGE = 16;
 export const TETHER_BREAK_RANGE = 19;
 export const TETHER_MAX_OWNERS = 2;
 export const CART_CAPACITY = 4;
+export const FIELD_CASE_PICKUP_RANGE = 3.2;
+export const FIELD_CASE_SPECIALIST_MULTIPLIER = 1.3;
 
 export type ControlSettings = {
   lookSensitivity: number;
@@ -112,6 +114,13 @@ export function nextHarvestTool(tool: HarvestToolId, direction = 1) {
   return HARVEST_TOOL_ORDER[
     (currentIndex + step + HARVEST_TOOL_ORDER.length) % HARVEST_TOOL_ORDER.length
   ];
+}
+
+export function fieldCaseHarvestMultiplier(
+  caseTool: HarvestToolId | null | undefined,
+  activeTool: HarvestToolId,
+) {
+  return caseTool === activeTool ? FIELD_CASE_SPECIALIST_MULTIPLIER : 1;
 }
 
 export type CargoDefinition = {

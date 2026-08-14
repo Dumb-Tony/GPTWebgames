@@ -172,6 +172,10 @@ export function OperationsHub({
           <p className={styles.freeLoadout}>
             COMPANY MINIMUM LOADOUT IS ALWAYS FREE: FIELD KIT · SCANNER · TETHER · EVA THRUSTER
           </p>
+          <p className={styles.freeLoadout}>
+            FIELD ASSIGNMENT: THREE COLOR-CODED SPECIALIST CASES DEPLOY BESIDE THE LANDER.
+            CLAIM ONE FOR +30% MATCHED OUTPUT, OR TOSS IT TO THE GOON WHO NEEDS IT.
+          </p>
         </div>
       )}
 

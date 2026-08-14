@@ -544,6 +544,18 @@
   color: var(--cyan);
 }
 
+.specialistCaseActive {
+  margin-inline: -7px;
+  padding: 6px 8px;
+  border: 1px solid rgba(255, 216, 90, 0.42);
+  background: rgba(255, 216, 90, 0.09);
+  box-shadow: inset 0 0 18px rgba(255, 216, 90, 0.08);
+}
+
+.specialistCaseActive strong {
+  color: var(--yellow);
+}
+
 .fuelLabel {
   margin-top: 10px;
   padding-top: 10px;

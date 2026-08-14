@@ -2424,6 +2424,19 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Extended the two-client integration check to verify ordered action bursts plus authoritative
   ping and rescue-assist state round trips.
 
+**Prototype status — Build 032 Specialist Handoff**
+
+- Added three physical drill, corer, and siphon specialist cases beside the lander. A scientist
+  can own one case at a time without losing access to the company-minimum harvesting kit.
+- Matching the carried case to the selected harvesting tool raises extraction output by 30%; the
+  drill case also reduces heat accumulation and mechanical wear.
+- Cases mount visibly on local and remote suits, can be tossed or passed with keyboard and
+  controller input, and use low-gravity ballistic motion with repeated readable bounces.
+- Synchronized case ownership, position, velocity, bounce state, and guest throw actions through
+  Crew Link, with two-client round-trip coverage for the new authoritative mission state.
+- Updated the Equipment Cage briefing, HUD telemetry, contextual prompts, and field-control cards
+  so the temporary-role system is discoverable without voice chat.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

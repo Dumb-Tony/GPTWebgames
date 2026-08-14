@@ -20,6 +20,7 @@ import {
   cargoCartTowMultiplier,
   calculateTetherPull,
   createMissionDepositDefinitions,
+  fieldCaseHarvestMultiplier,
   formatSignalBearing,
   formatTime,
   missionMaximumValue,
@@ -520,4 +521,12 @@ test("first-shift guidance advances through the full extraction loop", () => {
   assert.equal(getMissionGuideStep(state).id, "secure");
   state.score = 900;
   assert.equal(getMissionGuideStep(state).id, "return");
+});
+
+test("specialist cases reward matching tools without locking the basic kit", () => {
+  assert.equal(fieldCaseHarvestMultiplier("drill", "drill"), 1.3);
+  assert.equal(fieldCaseHarvestMultiplier("corer", "corer"), 1.3);
+  assert.equal(fieldCaseHarvestMultiplier("siphon", "siphon"), 1.3);
+  assert.equal(fieldCaseHarvestMultiplier("drill", "corer"), 1);
+  assert.equal(fieldCaseHarvestMultiplier(null, "siphon"), 1);
 });

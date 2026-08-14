@@ -23,6 +23,7 @@ import {
   crewColor,
   enqueueCrewAction,
   type CrewActionType,
+  type CrewFieldToolCase,
   type CrewLocalPresence,
   type CrewMissionPing,
   type CrewMissionState,
@@ -35,6 +36,7 @@ import {
 import {
   DEFAULT_CONTROL_SETTINGS,
   DRILL_JAM_WEAR,
+  FIELD_CASE_PICKUP_RANGE,
   CART_CAPACITY,
   MISSION_SECONDS,
   TETHER_BREAK_RANGE,
@@ -58,6 +60,7 @@ import {
   createMissionDepositDefinitions,
   formatSignalBearing,
   formatTime,
+  fieldCaseHarvestMultiplier,
   harvestToolData,
   nextMissionSeed,
   nextHarvestTool,
@@ -180,6 +183,11 @@ type CrewPingRuntime = {
   light: THREE.PointLight;
 };
 
+type FieldToolCaseRuntime = CrewFieldToolCase & {
+  group: THREE.Group;
+  beacon: THREE.PointLight;
+};
+
 type Snapshot = {
   phase: Phase;
   time: number;
@@ -189,6 +197,8 @@ type Snapshot = {
   drillWear: number;
   drillJammed: boolean;
   activeHarvestTool: HarvestToolId;
+  specialistCase: HarvestToolId | null;
+  nearbyFieldCase: HarvestToolId | null;
   harvestMeter: number;
   repairProgress: number;
   repairsCompleted: number;
@@ -1001,6 +1011,11 @@ function createAstronaut(suitColor = palette.yellow) {
   thrusterGlow.position.set(0, 1.85, 0.92);
   astronaut.add(thrusterGlow);
 
+  const fieldCaseAnchor = new THREE.Object3D();
+  fieldCaseAnchor.position.set(-0.92, 2.08, 0.32);
+  fieldCaseAnchor.rotation.set(0.08, -0.22, -0.08);
+  astronaut.add(fieldCaseAnchor);
+
   astronaut.userData.leftArm = leftArm;
   astronaut.userData.rightArm = rightArm;
   astronaut.userData.leftLeg = leftLeg;
@@ -1021,6 +1036,7 @@ function createAstronaut(suitColor = palette.yellow) {
   astronaut.userData.visor = visor;
   astronaut.userData.thrusterFlames = thrusterFlames;
   astronaut.userData.thrusterGlow = thrusterGlow;
+  astronaut.userData.fieldCaseAnchor = fieldCaseAnchor;
   return astronaut;
 }
 
@@ -1081,6 +1097,72 @@ function createHarvestMethodMarker(tool: HarvestToolId) {
   }
   marker.add(glyph);
   return marker;
+}
+
+function fieldToolCaseColor(tool: HarvestToolId) {
+  return tool === "drill"
+    ? palette.coral
+    : tool === "corer"
+      ? palette.yellow
+      : palette.cyan;
+}
+
+function createFieldToolCase(
+  id: string,
+  toolId: HarvestToolId,
+  position: [number, number, number],
+): FieldToolCaseRuntime {
+  const color = fieldToolCaseColor(toolId);
+  const group = new THREE.Group();
+  group.position.fromArray(position);
+  group.userData.spin = new THREE.Vector3(2.2, 3.4, 1.4);
+
+  const body = box([1.45, 0.72, 1.02], 0xe7dfc8, [0, 0, 0], {
+    roughness: 0.62,
+    metalness: 0.24,
+  });
+  body.castShadow = true;
+  body.receiveShadow = true;
+  group.add(body);
+  group.add(box([1.52, 0.14, 1.08], color, [0, 0.12, 0], {
+    emissive: color,
+    emissiveIntensity: 0.65,
+    metalness: 0.42,
+  }));
+  group.add(box([0.62, 0.16, 0.16], 0x272a31, [0, 0.48, 0], {
+    metalness: 0.72,
+    roughness: 0.36,
+  }));
+  [-0.52, 0.52].forEach((x) => {
+    group.add(box([0.18, 0.2, 0.12], 0x30333a, [x, 0.42, -0.5], {
+      metalness: 0.72,
+      roughness: 0.32,
+    }));
+  });
+  const badge = createBillboardLabel(
+    harvestToolData[toolId].shortName,
+    "SPECIALIST CASE",
+    color,
+    [2.75, 0.78],
+  );
+  badge.position.set(0, 1.45, 0);
+  group.add(badge);
+  group.userData.badge = badge;
+  const beacon = new THREE.PointLight(color, 4.8, 7, 2);
+  beacon.position.set(0, 1.05, 0);
+  group.add(beacon);
+
+  return {
+    id,
+    toolId,
+    position,
+    velocity: [0, 0, 0],
+    ownerId: null,
+    isBallistic: false,
+    bounceCount: 0,
+    group,
+    beacon,
+  };
 }
 
 function createDeposit(
@@ -2161,6 +2243,8 @@ export function MoonGoonsGame() {
     drillWear: 0,
     drillJammed: false,
     activeHarvestTool: "drill",
+    specialistCase: null,
+    nearbyFieldCase: null,
     harvestMeter: 0,
     repairProgress: 0,
     repairsCompleted: 0,
@@ -2733,6 +2817,7 @@ export function MoonGoonsGame() {
       {
         group: THREE.Group;
         anchor: THREE.Object3D;
+        caseAnchor: THREE.Object3D;
         target: THREE.Vector3;
         networkPosition: THREE.Vector3;
         networkVelocity: THREE.Vector3;
@@ -2745,6 +2830,7 @@ export function MoonGoonsGame() {
     const crewPings = new Map<string, CrewPingRuntime>();
     const crewRescueAssists = new Map<string, CrewRescueAssist>();
     let localPingSequence = 0;
+    let previousLocalFieldCaseId: string | null = null;
     const tetherLines = new Map<string, THREE.Line>();
     const cartTowLine = new THREE.Line(
       new THREE.BufferGeometry().setFromPoints([
@@ -2767,6 +2853,18 @@ export function MoonGoonsGame() {
       [-1.08, 0.76, 0.58],
       [1.08, 0.76, 0.58],
     ];
+
+    const fieldToolCaseStarts = [
+        ["field-case-drill", "drill", [-14.8, 0.56, 1.8]],
+        ["field-case-corer", "corer", [-14.8, 0.56, 5]],
+        ["field-case-siphon", "siphon", [-14.8, 0.56, 8.2]],
+      ] as const;
+    const createInitialFieldToolCases = () =>
+      fieldToolCaseStarts.map(([id, toolId, position]) =>
+        createFieldToolCase(id, toolId, [...position]),
+      );
+    const fieldToolCases = createInitialFieldToolCases();
+    fieldToolCases.forEach((fieldCase) => scene.add(fieldCase.group));
 
     let deposits = createMissionDepositDefinitions(
       missionSeedRef.current,
@@ -2867,6 +2965,7 @@ export function MoonGoonsGame() {
     const carriedAnchor = new THREE.Object3D();
     carriedAnchor.position.set(0, 2.05, -2.05);
     astronaut.add(carriedAnchor);
+    const localFieldCaseAnchor = astronaut.userData.fieldCaseAnchor as THREE.Object3D;
 
     const velocity = new THREE.Vector3();
     let verticalVelocity = 0;
@@ -2949,6 +3048,20 @@ export function MoonGoonsGame() {
         fluxCore.ring.visible = false;
         fluxCore.methodMarker.visible = false;
       }
+    };
+
+    const resetFieldToolCases = () => {
+      fieldToolCases.forEach((fieldCase, index) => {
+        if (fieldCase.group.parent !== scene) scene.attach(fieldCase.group);
+        fieldCase.ownerId = null;
+        fieldCase.velocity = [0, 0, 0];
+        fieldCase.isBallistic = false;
+        fieldCase.bounceCount = 0;
+        fieldCase.group.position.fromArray(fieldToolCaseStarts[index][2]);
+        fieldCase.group.rotation.set(0, index * 0.08 - 0.08, 0);
+        fieldCase.group.scale.setScalar(1);
+        fieldCase.group.visible = true;
+      });
     };
 
     const removeCrewPing = (id: string) => {
@@ -3075,6 +3188,75 @@ export function MoonGoonsGame() {
       });
       messageRef.current = `${helperName} CONNECTED A SUIT REBOOT LEAD TO ${target.member.name}. TEAM SAFETY EVENT IN PROGRESS.`;
       sound("repair");
+      return true;
+    };
+
+    const fieldCaseWorldPosition = (fieldCase: FieldToolCaseRuntime) =>
+      fieldCase.group.getWorldPosition(new THREE.Vector3());
+
+    const nearestLooseFieldToolCase = (memberPosition: THREE.Vector3) =>
+      fieldToolCases
+        .filter((fieldCase) => fieldCase.ownerId === null)
+        .map((fieldCase) => ({
+          fieldCase,
+          distance: fieldCaseWorldPosition(fieldCase).distanceTo(memberPosition),
+        }))
+        .sort((a, b) => a.distance - b.distance)[0] ?? null;
+
+    const pickupFieldToolCase = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      if (fieldToolCases.some((fieldCase) => fieldCase.ownerId === ownerId)) {
+        return false;
+      }
+      const nearest = nearestLooseFieldToolCase(ownerPosition);
+      if (!nearest || nearest.distance > FIELD_CASE_PICKUP_RANGE) return false;
+      nearest.fieldCase.ownerId = ownerId;
+      nearest.fieldCase.velocity = [0, 0, 0];
+      nearest.fieldCase.isBallistic = false;
+      nearest.fieldCase.bounceCount = 0;
+      if (ownerId === (crewSessionRef.current?.memberId ?? "solo")) {
+        activeHarvestToolRef.current = nearest.fieldCase.toolId;
+        setAstronautHarvestTool(astronaut, nearest.fieldCase.toolId);
+      }
+      messageRef.current = `${ownerName} CLAIMED THE ${harvestToolData[
+        nearest.fieldCase.toolId
+      ].name.toUpperCase()} SPECIALIST CASE. MATCHING EXTRACTION OUTPUT +30%.`;
+      sound("pickup");
+      return true;
+    };
+
+    const tossFieldToolCase = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+      ownerYaw: number,
+    ) => {
+      const owned = fieldToolCases.find(
+        (fieldCase) => fieldCase.ownerId === ownerId,
+      );
+      if (!owned) {
+        messageRef.current = `${ownerName} HAS NO SPECIALIST CASE TO TOSS.`;
+        return false;
+      }
+      const forward = new THREE.Vector3(0, 0, -1).applyAxisAngle(
+        new THREE.Vector3(0, 1, 0),
+        ownerYaw,
+      );
+      if (owned.group.parent !== scene) scene.attach(owned.group);
+      owned.group.position.copy(ownerPosition).addScaledVector(forward, 1.8);
+      owned.group.position.y += 1.6;
+      owned.group.scale.setScalar(1);
+      owned.ownerId = null;
+      owned.velocity = [forward.x * 8.6, 4.8, forward.z * 8.6];
+      owned.isBallistic = true;
+      owned.bounceCount = 0;
+      messageRef.current = `${ownerName} AIRMAILED THE ${harvestToolData[
+        owned.toolId
+      ].name.toUpperCase()} CASE. CATCHING IT IS OPTIONAL BUT EFFICIENT.`;
+      sound("launch");
       return true;
     };
 
@@ -3477,6 +3659,7 @@ export function MoonGoonsGame() {
         world.rover.position,
       );
       cartTowLine.visible = false;
+      resetFieldToolCases();
       resetDeposits();
     };
 
@@ -3635,6 +3818,20 @@ export function MoonGoonsGame() {
           )
         ) {
           stabilizerChargesRef.current -= 1;
+        }
+      }
+      if (event.code === "KeyX" && !event.repeat && phaseRef.current === "active") {
+        const session = crewSessionRef.current;
+        if (session?.role === "guest") {
+          queueCrewAction("tool_throw");
+          messageRef.current = "Specialist-case toss request sent to mission lead authority.";
+        } else {
+          tossFieldToolCase(
+            session?.memberId ?? "solo",
+            session?.name ?? "SOLO GOON",
+            astronaut.position,
+            astronaut.rotation.y,
+          );
         }
       }
       keysRef.current.add(event.code);
@@ -3990,6 +4187,34 @@ export function MoonGoonsGame() {
       });
 
       const localMemberId = crewSessionRef.current?.memberId ?? null;
+      (state.fieldToolCases ?? []).forEach((incoming) => {
+        const fieldCase = fieldToolCases.find(
+          (candidate) => candidate.id === incoming.id,
+        );
+        if (!fieldCase) return;
+        fieldCase.ownerId = incoming.ownerId;
+        fieldCase.velocity = [...incoming.velocity];
+        fieldCase.isBallistic = incoming.isBallistic;
+        fieldCase.bounceCount = incoming.bounceCount;
+        if (incoming.ownerId === null) {
+          if (fieldCase.group.parent !== scene) scene.attach(fieldCase.group);
+          fieldCase.group.position.fromArray(incoming.position);
+          fieldCase.group.scale.setScalar(1);
+        }
+      });
+      const incomingLocalFieldCase = fieldToolCases.find(
+        (fieldCase) => fieldCase.ownerId === localMemberId,
+      );
+      if (
+        incomingLocalFieldCase &&
+        incomingLocalFieldCase.id !== previousLocalFieldCaseId
+      ) {
+        activeHarvestToolRef.current = incomingLocalFieldCase.toolId;
+        setAstronautHarvestTool(astronaut, incomingLocalFieldCase.toolId);
+        sound("pickup");
+      }
+      previousLocalFieldCaseId = incomingLocalFieldCase?.id ?? null;
+
       carryingRef.current = null;
       state.deposits.forEach((incoming) => {
         const deposit = deposits.find((candidate) => candidate.id === incoming.id);
@@ -4100,6 +4325,16 @@ export function MoonGoonsGame() {
           return;
         }
 
+        if (action.type === "tool_throw") {
+          tossFieldToolCase(
+            member.id,
+            member.name,
+            memberPosition,
+            member.yaw,
+          );
+          return;
+        }
+
         const held = deposits.find((deposit) => deposit.ownerId === member.id);
         if (held) {
           if (
@@ -4161,6 +4396,13 @@ export function MoonGoonsGame() {
 
         if (
           action.type === "interact" &&
+          pickupFieldToolCase(member.id, member.name, memberPosition)
+        ) {
+          return;
+        }
+
+        if (
+          action.type === "interact" &&
           depositCargoCart(member.name, memberPosition)
         ) {
           return;
@@ -4206,6 +4448,7 @@ export function MoonGoonsGame() {
             group.scale.setScalar(0.94);
             const anchor = new THREE.Object3D();
             anchor.position.set(0, 2.05, -2.05);
+            const caseAnchor = group.userData.fieldCaseAnchor as THREE.Object3D;
             const nameplate = createBillboardLabel(
               member.name,
               member.role === "host" ? "MISSION LEAD" : "FIELD GOON",
@@ -4218,6 +4461,7 @@ export function MoonGoonsGame() {
             remote = {
               group,
               anchor,
+              caseAnchor,
               target: new THREE.Vector3(member.x, member.y, member.z),
               networkPosition: new THREE.Vector3(member.x, member.y, member.z),
               networkVelocity: new THREE.Vector3(),
@@ -4358,6 +4602,11 @@ export function MoonGoonsGame() {
         applyAuthoritativeState(incomingAuthority.state);
         processedAuthorityRevisionRef.current = incomingAuthority.revision;
       }
+      const localOwnerId = session?.memberId ?? "solo";
+      const localSpecialistCase = fieldToolCases.find(
+        (fieldCase) => fieldCase.ownerId === localOwnerId,
+      );
+      const nearbyLooseFieldCase = nearestLooseFieldToolCase(astronaut.position);
       const phase = phaseRef.current;
       const gameplayInputEnabled =
         phase === "active" &&
@@ -4734,6 +4983,9 @@ export function MoonGoonsGame() {
             }
             const memberPosition = new THREE.Vector3(member.x, member.y, member.z);
             const memberTool = crewHarvestTool(member.inputMask);
+            const memberSpecialistCase = fieldToolCases.find(
+              (fieldCase) => fieldCase.ownerId === member.id,
+            );
             const target = deposits
               .filter(
                 (deposit) =>
@@ -4749,7 +5001,8 @@ export function MoonGoonsGame() {
             if (!canHarvestCargo(memberTool, target.kind)) return;
             target.state = "extracting";
             const harvestRate =
-              memberTool === "drill" ? 20 : memberTool === "corer" ? 18 : 22;
+              (memberTool === "drill" ? 20 : memberTool === "corer" ? 18 : 22) *
+              fieldCaseHarvestMultiplier(memberSpecialistCase?.toolId, memberTool);
             target.progress = Math.min(100, target.progress + dt * harvestRate);
             target.harvestPulse = Math.max(
               target.harvestPulse,
@@ -5356,6 +5609,77 @@ export function MoonGoonsGame() {
           }
         });
 
+        fieldToolCases.forEach((fieldCase, index) => {
+          const badge = fieldCase.group.userData.badge as THREE.Sprite;
+          badge.visible = fieldCase.ownerId === null;
+          fieldCase.beacon.intensity = fieldCase.ownerId
+            ? 0.7
+            : 4.4 + Math.sin(now * 0.006 + index) * 1.2;
+          if (fieldCase.ownerId === localOwnerId) {
+            if (fieldCase.group.parent !== localFieldCaseAnchor) {
+              localFieldCaseAnchor.add(fieldCase.group);
+            }
+            fieldCase.group.position.set(0, 0, 0);
+            fieldCase.group.rotation.set(0.08, 0.12, -0.04);
+            fieldCase.group.scale.setScalar(0.58);
+            return;
+          }
+          if (fieldCase.ownerId) {
+            const remote = remoteAstronauts.get(fieldCase.ownerId);
+            if (remote && fieldCase.group.parent !== remote.caseAnchor) {
+              remote.caseAnchor.add(fieldCase.group);
+              fieldCase.group.position.set(0, 0, 0);
+              fieldCase.group.rotation.set(0.08, 0.12, -0.04);
+              fieldCase.group.scale.setScalar(0.58);
+            }
+            return;
+          }
+          if (fieldCase.group.parent !== scene) scene.attach(fieldCase.group);
+          fieldCase.group.scale.setScalar(1);
+          if (fieldCase.isBallistic) {
+            const caseVelocity = new THREE.Vector3().fromArray(fieldCase.velocity);
+            caseVelocity.y -= world.gravity * 1.22 * dt;
+            fieldCase.group.position.addScaledVector(caseVelocity, dt);
+            const surfaceRadius = Math.hypot(
+              fieldCase.group.position.x,
+              fieldCase.group.position.z,
+            );
+            if (surfaceRadius > MOON_RADIUS - 1.25) {
+              const boundaryScale = (MOON_RADIUS - 1.25) / surfaceRadius;
+              fieldCase.group.position.x *= boundaryScale;
+              fieldCase.group.position.z *= boundaryScale;
+              caseVelocity.x *= -0.46;
+              caseVelocity.z *= -0.46;
+            }
+            const spin = fieldCase.group.userData.spin as THREE.Vector3;
+            fieldCase.group.rotation.x += spin.x * dt;
+            fieldCase.group.rotation.y += spin.y * dt;
+            fieldCase.group.rotation.z += spin.z * dt;
+            if (fieldCase.group.position.y <= 0.56 && caseVelocity.y < 0) {
+              const impactSpeed = Math.abs(caseVelocity.y);
+              fieldCase.group.position.y = 0.56;
+              if (impactSpeed > 0.9 && fieldCase.bounceCount < 5) {
+                fieldCase.bounceCount += 1;
+                caseVelocity.y = impactSpeed * 0.48;
+                caseVelocity.x *= 0.78;
+                caseVelocity.z *= 0.78;
+                sound("bounce");
+              } else {
+                caseVelocity.set(0, 0, 0);
+                fieldCase.isBallistic = false;
+                fieldCase.bounceCount = 0;
+                fieldCase.group.rotation.x = 0;
+                fieldCase.group.rotation.z = 0;
+              }
+            }
+            fieldCase.velocity = caseVelocity.toArray() as [number, number, number];
+          } else {
+            fieldCase.group.position.y =
+              0.56 + Math.sin(now * 0.0028 + index * 1.4) * 0.08;
+            fieldCase.group.rotation.y += dt * 0.18;
+          }
+        });
+
         const activeTetherLines = new Set<string>();
         deposits.forEach((deposit) => {
           if (deposit.state !== "cargo") return;
@@ -5419,6 +5743,10 @@ export function MoonGoonsGame() {
               b.position.distanceTo(astronaut.position),
           )[0];
         const activeHarvestTool = activeHarvestToolRef.current;
+        const specialistMultiplier = fieldCaseHarvestMultiplier(
+          localSpecialistCase?.toolId,
+          activeHarvestTool,
+        );
         const harvestToolMatches = Boolean(
           nearestHarvestable &&
             canHarvestCargo(activeHarvestTool, nearestHarvestable.kind),
@@ -5529,7 +5857,10 @@ export function MoonGoonsGame() {
             );
             drillWearRef.current = Math.min(
               DRILL_JAM_WEAR,
-              drillWearRef.current + dt * (heatRef.current > 72 ? 18 : 10),
+              drillWearRef.current +
+                dt *
+                  (heatRef.current > 72 ? 18 : 10) *
+                  (specialistMultiplier > 1 ? 0.78 : 1),
             );
             const upgradedCooling = hasEquippedUpgrade(
               progressionRef.current,
@@ -5537,7 +5868,11 @@ export function MoonGoonsGame() {
             );
             heatRef.current = Math.min(
               100,
-              heatRef.current + dt * 33 * (upgradedCooling ? 0.76 : 1),
+              heatRef.current +
+                dt *
+                  33 *
+                  (upgradedCooling ? 0.76 : 1) *
+                  (specialistMultiplier > 1 ? 0.72 : 1),
             );
             drill.rotation.y += dt * 34;
             drill.position.y = 2.7 + Math.sin(now * 0.07) * 0.045;
@@ -5563,6 +5898,7 @@ export function MoonGoonsGame() {
             );
             (astronaut.userData.siphonValve as THREE.Mesh).rotation.z += dt * 5.2;
           }
+          extractionGain *= specialistMultiplier;
           if (activeHarvestTool !== "drill") {
             heatRef.current = Math.max(
               0,
@@ -5681,11 +6017,32 @@ export function MoonGoonsGame() {
                 astronaut.position,
               );
             }
+          } else if (
+            throwInput &&
+            carryingRef.current === null &&
+            localSpecialistCase
+          ) {
+            if (!hasAuthority) {
+              queueCrewAction("tool_throw");
+              messageRef.current = "Specialist-case toss request sent to mission lead authority.";
+            } else {
+              tossFieldToolCase(
+                helperId,
+                session?.name ?? "SOLO GOON",
+                astronaut.position,
+                astronaut.rotation.y,
+              );
+            }
           } else if (!hasAuthority) {
             queueCrewAction(
               throwInput ? "throw" : "interact",
             );
-            messageRef.current = "Cargo request sent to mission lead authority.";
+            messageRef.current =
+              nearbyLooseFieldCase &&
+              nearbyLooseFieldCase.distance <= FIELD_CASE_PICKUP_RANGE &&
+              !localSpecialistCase
+                ? "Specialist-case claim request sent to mission lead authority."
+                : "Cargo request sent to mission lead authority.";
           } else if (carryingRef.current !== null) {
             const held = deposits.find((deposit) => deposit.id === carryingRef.current);
             if (held) {
@@ -5779,6 +6136,14 @@ export function MoonGoonsGame() {
                   b.position.distanceTo(astronaut.position),
               )[0];
             if (
+              pickupFieldToolCase(
+                session?.memberId ?? "solo",
+                session?.name ?? "SOLO GOON",
+                astronaut.position,
+              )
+            ) {
+              // Specialist cases use the belt slot and leave both hands free.
+            } else if (
               depositCargoCart(
                 session?.name ?? "SOLO GOON",
                 astronaut.position,
@@ -6195,6 +6560,14 @@ export function MoonGoonsGame() {
         ) {
           prompt = `E · CONNECT REBOOT LEAD // ${nearbyDownedCrew.member.name.toUpperCase()} · TEAM RECOVERY`;
         } else if (
+          nearbyLooseFieldCase &&
+          nearbyLooseFieldCase.distance <= FIELD_CASE_PICKUP_RANGE &&
+          !localSpecialistCase
+        ) {
+          prompt = `E · CLAIM ${harvestToolData[
+            nearbyLooseFieldCase.fieldCase.toolId
+          ].name.toUpperCase()} SPECIALIST CASE // +30% MATCHED OUTPUT`;
+        } else if (
           cartCargoIds.length > 0 &&
           cartReceiverDistance < 4.8 &&
           receiverDistance < 5.8
@@ -6357,6 +6730,19 @@ export function MoonGoonsGame() {
             rescueAssists: [...crewRescueAssists.values()].map((assist) => ({
               ...assist,
             })),
+            fieldToolCases: fieldToolCases.map((fieldCase) => ({
+              id: fieldCase.id,
+              toolId: fieldCase.toolId,
+              position: fieldCaseWorldPosition(fieldCase).toArray() as [
+                number,
+                number,
+                number,
+              ],
+              velocity: [...fieldCase.velocity] as [number, number, number],
+              ownerId: fieldCase.ownerId,
+              isBallistic: fieldCase.isBallistic,
+              bounceCount: fieldCase.bounceCount,
+            })),
             deposits: deposits.map((deposit) => {
               const worldPosition = deposit.group.getWorldPosition(new THREE.Vector3());
               return {
@@ -6391,6 +6777,8 @@ export function MoonGoonsGame() {
           drillWear: drillWearRef.current,
           drillJammed: drillJammedRef.current,
           activeHarvestTool: activeHarvestToolRef.current,
+          specialistCase: localSpecialistCase?.toolId ?? null,
+          nearbyFieldCase: nearbyLooseFieldCase?.fieldCase.toolId ?? null,
           harvestMeter:
             activeHarvestToolRef.current === "drill"
               ? heatRef.current
@@ -6471,6 +6859,12 @@ export function MoonGoonsGame() {
       pointerTargetRef.current = null;
       resetRuntimeRef.current = null;
       scene.traverse((object) => {
+        if (object instanceof THREE.Sprite) {
+          const material = object.material as THREE.SpriteMaterial;
+          material.map?.dispose();
+          material.dispose();
+          return;
+        }
         if (
           object instanceof THREE.Mesh ||
           object instanceof THREE.Points ||
@@ -6567,6 +6961,8 @@ export function MoonGoonsGame() {
       drillWear: 0,
       drillJammed: false,
       activeHarvestTool: "drill",
+      specialistCase: null,
+      nearbyFieldCase: null,
       harvestMeter: 0,
       repairProgress: 0,
       repairsCompleted: 0,
@@ -6669,7 +7065,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 031 // CREW SIGNALS</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 032 // SPECIALIST HANDOFF</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -6872,6 +7268,28 @@ export function MoonGoonsGame() {
               <span>FIELD KIT TAB / WHEEL</span>
               <strong>DRILL · CORER · SIPHON</strong>
             </div>
+            <div
+              className={`${styles.utilityToolStatus} ${
+                snapshot.specialistCase === snapshot.activeHarvestTool
+                  ? styles.specialistCaseActive
+                  : ""
+              }`}
+            >
+              <span>SPECIALIST CASE X / ⇧E</span>
+              <strong>
+                {snapshot.specialistCase
+                  ? `${harvestToolData[
+                      snapshot.specialistCase
+                    ].shortName} OWNED · ${
+                      snapshot.specialistCase === snapshot.activeHarvestTool
+                        ? "+30% ACTIVE"
+                        : "MATCH TOOL FOR BONUS"
+                    }`
+                  : snapshot.nearbyFieldCase
+                    ? `${harvestToolData[snapshot.nearbyFieldCase].shortName} CASE NEARBY`
+                    : "FIND OR CATCH A CASE"}
+              </strong>
+            </div>
             <div className={styles.suitLabel}>
               <span>{snapshot.downed ? "SUIT SAFE MODE" : "SUIT INTEGRITY"}</span>
               <strong>
@@ -6993,6 +7411,7 @@ export function MoonGoonsGame() {
               <span><kbd>RT</kbd> USE TOOL</span>
               <span><kbd>D↑</kbd> FLIP POLARITY</span>
               <span><kbd>VIEW</kbd> CYCLE TOOL</span>
+              <span><kbd>RB</kbd> TOSS CASE / CARGO</span>
               <span><kbd>START</kbd> MENU</span>
             </div>
           )}
@@ -7033,6 +7452,10 @@ export function MoonGoonsGame() {
             <div>
               <kbd>G / V</kbd>
               <span>POLARITY / FLIP</span>
+            </div>
+            <div>
+              <kbd>X</kbd>
+              <span>TOSS SPECIALIST CASE</span>
             </div>
           </div>
 

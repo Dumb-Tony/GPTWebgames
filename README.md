@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 031: Crew Signals, a multiplayer coordination and reliability pass layered onto the Rust Belt Polarity Annex, retro-NASA field test, three-tool kit, and cargo-cart logistics introduced in Builds 021–030.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 032: Specialist Handoff, a physical equipment-sharing pass layered onto the Crew Signals, Rust Belt Polarity Annex, retro-NASA field test, three-tool kit, and cargo-cart logistics introduced in Builds 021–031.
 
 ## Playable build
 
@@ -19,6 +19,8 @@ The first prototype includes:
 - Scanner telemetry for tracked contacts and nearest-signal distance
 - A drill with heat, efficiency loss, and thermal lockout
 - A selectable three-tool harvesting kit: thermal drill, percussion corer, and cryo siphon
+- Three physical specialist cases that can be claimed, worn, tossed, bounced, caught, and transferred between scientists
+- A 30% matched-tool extraction bonus, with reduced heat and wear for the drill specialist
 - Resource-specific extraction: metals are drilled, glass/fossils are core-sampled, and pressurized cargo is siphoned
 - Distinct extraction rhythms including continuous drilling, timed corer strikes, and seal-building siphon flow
 - Scanner identification of the nearest material and its required harvesting tool
@@ -100,6 +102,7 @@ using the public build can review and add to the same development log.
 | R | Repair a jammed drill |
 | E | Grab, drop, deposit, launch, or hold to reboot a disabled suit |
 | Shift + E | Throw carried cargo (fragile samples may lose value on impact) |
+| X | Toss your specialist case to another scientist |
 | P | Ping your position to the connected crew |
 | T | Tether or release nearby loose cargo |
 | H | Hitch or release the nearby cargo cart |
@@ -123,7 +126,7 @@ using the public build can review and add to the same development log.
 | Left stick click | Hitch / release cargo cart |
 | Left trigger | Fire polarity manipulator / align relay |
 | Right stick click | Stabilizer foam |
-| Right bumper | Throw carried cargo |
+| Right bumper | Throw carried cargo, or toss your specialist case while hands are empty |
 | B / Circle | Repair jammed drill / back out of menus |
 | D-pad up | Flip polarity mode |
 | D-pad right / down / left | Mark cargo / danger / return to ship |
@@ -155,7 +158,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 031 returns to Milestone 7 cooperation polish. Crew callouts now create color-coded world beacons, cargo and ship callouts mark useful targets, remote scientists carry readable overhead call signs, and the roster reports distance, activity, safe mode, and link quality. Guest actions use a bounded reliable queue instead of replacing one another during fast input. Downed scientists automatically broadcast for help, and nearby teammates can connect a reboot lead for an accelerated recovery. Remaining work includes physical tool handoff, longer four-player soak testing, remappable action bindings, and broader accessibility auditing.
+Build 032 completes the first physical tool-handoff slice for Milestone 7. Three color-coded specialist cases deploy beside the lander, mount visibly on a scientist's suit, and provide a 30% bonus when matched to the active drill, corer, or siphon. Cases can be tossed through low gravity, bounce repeatedly, and transfer ownership safely through Crew Link without locking anyone out of the basic kit. Remaining cooperation work includes longer four-player soak testing and richer catch/handoff statistics; Milestone 9 still requires remappable action bindings and broader accessibility auditing.
 
 ## Design references
 
