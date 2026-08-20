@@ -22,6 +22,7 @@ export type ControlSettings = {
   cameraShake: number;
   highContrast: boolean;
   hudScale: number;
+  hudDensity: "compact" | "full";
   renderQuality: "low" | "balanced" | "high";
   missionGuide: boolean;
 };
@@ -33,6 +34,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   cameraShake: 0.8,
   highContrast: false,
   hudScale: 1,
+  hudDensity: "compact",
   renderQuality: "balanced",
   missionGuide: true,
 };
@@ -121,6 +123,21 @@ export function fieldCaseHarvestMultiplier(
   activeTool: HarvestToolId,
 ) {
   return caseTool === activeTool ? FIELD_CASE_SPECIALIST_MULTIPLIER : 1;
+}
+
+export function calculateCatchBonus(
+  speed: number,
+  bounceCount: number,
+  equipmentCase = false,
+) {
+  const safeSpeed = Math.max(0, Number.isFinite(speed) ? speed : 0);
+  const safeBounces = Math.max(0, Math.min(4, Math.trunc(bounceCount)));
+  const base = equipmentCase ? 10 : 18;
+  const cap = equipmentCase ? 40 : 65;
+  return Math.min(
+    cap,
+    Math.round(base + Math.min(12, safeSpeed) * 2 + safeBounces * 5),
+  );
 }
 
 export type CargoDefinition = {
@@ -544,6 +561,7 @@ export function normalizeControlSettings(
   const volume = Number(settings?.volume);
   const cameraShake = Number(settings?.cameraShake);
   const hudScale = Number(settings?.hudScale);
+  const hudDensity = settings?.hudDensity;
   const renderQuality = settings?.renderQuality;
   return {
     lookSensitivity: Number.isFinite(sensitivity)
@@ -566,6 +584,10 @@ export function normalizeControlSettings(
     hudScale: Number.isFinite(hudScale)
       ? Math.min(1.2, Math.max(0.85, hudScale))
       : DEFAULT_CONTROL_SETTINGS.hudScale,
+    hudDensity:
+      hudDensity === "full" || hudDensity === "compact"
+        ? hudDensity
+        : DEFAULT_CONTROL_SETTINGS.hudDensity,
     renderQuality:
       renderQuality === "low" || renderQuality === "high" || renderQuality === "balanced"
         ? renderQuality

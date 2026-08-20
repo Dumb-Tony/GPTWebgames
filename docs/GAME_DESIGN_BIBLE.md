@@ -2437,6 +2437,17 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Updated the Equipment Cage briefing, HUD telemetry, contextual prompts, and field-control cards
   so the temporary-role system is discoverable without voice chat.
 
+**Prototype status — Build 033 Catch + Clarity**
+
+- Added direct mid-air catches for ballistic cargo and synchronized specialist-case handoffs.
+  Catch bonuses scale with speed and prior ricochets, while per-object cooldowns prevent farming.
+- Added catch-specific audio, camera response, centered field callouts, radio copy, mission telemetry,
+  Crew Link statistic synchronization, and dedicated debrief categories.
+- Added Compact and Full Telemetry HUD modes. Compact is the new default and suppresses secondary
+  subsystem rows and advanced control reminders without removing contextual prompts.
+- Preserved the full company-minimum tool kit and existing cargo handling, so catching deepens
+  cooperative play without becoming a mandatory role or blocking solo completion.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

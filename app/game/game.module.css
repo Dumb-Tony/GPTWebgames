@@ -556,6 +556,21 @@
   color: var(--yellow);
 }
 
+.shell[data-hud-density="compact"] .secondaryTelemetry,
+.shell[data-hud-density="compact"] .advancedControl {
+  display: none;
+}
+
+.shell[data-hud-density="compact"] .toolPanel {
+  width: min(286px, calc(50vw - 34px));
+  padding: 14px;
+}
+
+.shell[data-hud-density="compact"] .controls,
+.shell[data-hud-density="compact"] .controllerControls {
+  background: rgba(7, 10, 20, 0.72);
+}
+
 .fuelLabel {
   margin-top: 10px;
   padding-top: 10px;
@@ -831,6 +846,43 @@
 .actionPrompt[data-risk="SHATTER"] strong {
   color: var(--red);
   text-shadow: 0 0 16px rgba(255, 97, 111, 0.52);
+}
+
+.stuntCallout {
+  position: absolute;
+  z-index: 7;
+  top: 24%;
+  left: 50%;
+  display: flex;
+  min-width: min(360px, 70vw);
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 12px 28px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(255, 216, 90, 0.72);
+  border-top: 3px solid var(--yellow);
+  background:
+    linear-gradient(90deg, transparent, rgba(11, 17, 31, 0.96) 16%, rgba(11, 17, 31, 0.96) 84%, transparent);
+  box-shadow: 0 0 38px rgba(255, 216, 90, 0.18);
+  font-family: monospace;
+  text-align: center;
+  pointer-events: none;
+  animation: catchCallout 0.28s cubic-bezier(0.2, 0.95, 0.35, 1.2) both;
+}
+
+.stuntCallout span {
+  color: var(--muted);
+  font-size: 7px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+}
+
+.stuntCallout strong {
+  color: var(--yellow);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 0 16px rgba(255, 216, 90, 0.5);
 }
 
 .launchButton {
@@ -2770,6 +2822,18 @@
 @keyframes warningPulse {
   50% {
     background: rgba(112, 19, 32, 0.72);
+  }
+}
+
+@keyframes catchCallout {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 18px) scale(0.86);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
   }
 }
 

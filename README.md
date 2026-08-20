@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 032: Specialist Handoff, a physical equipment-sharing pass layered onto the Crew Signals, Rust Belt Polarity Annex, retro-NASA field test, three-tool kit, and cargo-cart logistics introduced in Builds 021–031.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 033: Catch + Clarity, a game-feel and interface-polish pass layered onto the Specialist Handoff, Crew Signals, Rust Belt Polarity Annex, and retro-NASA field test introduced in Builds 021–032.
 
 ## Playable build
 
@@ -21,6 +21,8 @@ The first prototype includes:
 - A selectable three-tool harvesting kit: thermal drill, percussion corer, and cryo siphon
 - Three physical specialist cases that can be claimed, worn, tossed, bounced, caught, and transferred between scientists
 - A 30% matched-tool extraction bonus, with reduced heat and wear for the drill specialist
+- Mid-air cargo catches and true teammate case handoffs with speed, ricochet, sound, camera, and payout feedback
+- Per-object reward cooldowns that preserve stylish repeat catches without allowing infinite contract farming
 - Resource-specific extraction: metals are drilled, glass/fossils are core-sampled, and pressurized cargo is siphoned
 - Distinct extraction rhythms including continuous drilling, timed corer strikes, and seal-building siphon flow
 - Scanner identification of the nearest material and its required harvesting tool
@@ -77,6 +79,7 @@ The first prototype includes:
 - Standard Xbox, PlayStation, and compatible controller input in both the hub and mission
 - Controller-focused menu navigation for contracts, upgrades, Crew Link, and settings
 - Camera-impact reduction, scalable HUD, high-contrast instruments, and tutorial controls
+- Compact and full mission-HUD modes, with the quieter compact presentation enabled by default
 - Battery Saver, Balanced, and High Detail render-quality presets
 
 ## Shared playtesting
@@ -158,7 +161,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 032 completes the first physical tool-handoff slice for Milestone 7. Three color-coded specialist cases deploy beside the lander, mount visibly on a scientist's suit, and provide a 30% bonus when matched to the active drill, corer, or siphon. Cases can be tossed through low gravity, bounce repeatedly, and transfer ownership safely through Crew Link without locking anyone out of the basic kit. Remaining cooperation work includes longer four-player soak testing and richer catch/handoff statistics; Milestone 9 still requires remappable action bindings and broader accessibility auditing.
+Build 033 is a focused game-feel and readability pass. Airborne cargo can now be caught directly, teammate specialist-case catches register as real handoffs, and both award bounded speed-and-ricochet bonuses with synchronized audio, camera, HUD, radio, and debrief feedback. The mission interface now defaults to a compact presentation that removes secondary telemetry and advanced control reminders while retaining a Full Telemetry option in Control Tuning. Remaining cooperation work includes longer four-player soak testing; Milestone 9 still requires remappable action bindings and broader accessibility auditing.
 
 ## Design references
 

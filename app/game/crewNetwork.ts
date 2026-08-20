@@ -159,6 +159,9 @@ export type CrewMissionState = {
     stuntBonus: number;
     cargoBounces: number;
     brokenSamples: number;
+    cargoCatches?: number;
+    caseCatches?: number;
+    catchBonus?: number;
   };
 };
 

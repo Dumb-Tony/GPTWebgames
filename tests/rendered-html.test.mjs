@@ -193,7 +193,7 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D The Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 032/);
+  assert.match(html, /BUILD 033/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -328,6 +328,9 @@ test("Crew Link preserves queued actions, cases, signals, rescue state, and clea
       stuntBonus: 0,
       cargoBounces: 0,
       brokenSamples: 0,
+      cargoCatches: 2,
+      caseCatches: 1,
+      catchBonus: 74,
     },
   };
 
@@ -442,6 +445,7 @@ test("Crew Link preserves queued actions, cases, signals, rescue state, and clea
     guestPoll.room.authoritativeState.fieldToolCases,
     state.fieldToolCases,
   );
+  assert.deepEqual(guestPoll.room.authoritativeState.stats, state.stats);
 
   const closeResponse = await fetch(crewUrl(host), {
     method: "DELETE",

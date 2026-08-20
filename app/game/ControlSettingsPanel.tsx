@@ -156,6 +156,24 @@ export function ControlSettingsPanel({
 
             <label className={styles.selectSetting}>
               <span>
+                <strong>MISSION HUD</strong>
+                <small>Compact keeps the essentials visible; Full shows every subsystem.</small>
+              </span>
+              <select
+                value={settings.hudDensity}
+                onChange={(event) =>
+                  update({
+                    hudDensity: event.target.value as ControlSettings["hudDensity"],
+                  })
+                }
+              >
+                <option value="compact">Compact</option>
+                <option value="full">Full Telemetry</option>
+              </select>
+            </label>
+
+            <label className={styles.selectSetting}>
+              <span>
                 <strong>RENDER QUALITY</strong>
                 <small>Lower this when frame rate matters more than sharp edges.</small>
               </span>

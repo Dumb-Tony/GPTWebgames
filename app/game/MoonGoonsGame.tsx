@@ -50,6 +50,7 @@ import {
   canHarvestCargo,
   canLoadCargoCart,
   calculateBankShotBonus,
+  calculateCatchBonus,
   calculateCargoBounce,
   calculateCargoImpact,
   calculateCargoValue,
@@ -186,6 +187,8 @@ type CrewPingRuntime = {
 type FieldToolCaseRuntime = CrewFieldToolCase & {
   group: THREE.Group;
   beacon: THREE.PointLight;
+  thrownById: string | null;
+  lastCatchRewardAt: number;
 };
 
 type Snapshot = {
@@ -207,6 +210,10 @@ type Snapshot = {
   stuntBonus: number;
   cargoBounces: number;
   brokenSamples: number;
+  cargoCatches: number;
+  caseCatches: number;
+  catchBonus: number;
+  catchNotice: string | null;
   missionSeed: number;
   suitIntegrity: number;
   downed: boolean;
@@ -1162,6 +1169,8 @@ function createFieldToolCase(
     bounceCount: 0,
     group,
     beacon,
+    thrownById: null,
+    lastCatchRewardAt: -Infinity,
   };
 }
 
@@ -2135,6 +2144,9 @@ export function MoonGoonsGame() {
   const stuntBonusRef = useRef(0);
   const cargoBouncesRef = useRef(0);
   const brokenSamplesRef = useRef(0);
+  const cargoCatchesRef = useRef(0);
+  const caseCatchesRef = useRef(0);
+  const catchBonusRef = useRef(0);
   const suitIntegrityRef = useRef(100);
   const downedRef = useRef(false);
   const recoveryProgressRef = useRef(0);
@@ -2253,6 +2265,10 @@ export function MoonGoonsGame() {
     stuntBonus: 0,
     cargoBounces: 0,
     brokenSamples: 0,
+    cargoCatches: 0,
+    caseCatches: 0,
+    catchBonus: 0,
+    catchNotice: null,
     missionSeed: INITIAL_MISSION_SEED,
     suitIntegrity: 100,
     downed: false,
@@ -2534,6 +2550,7 @@ export function MoonGoonsGame() {
         | "warning"
         | "launch"
         | "bounce"
+        | "catch"
         | "break"
         | "step"
         | "repair"
@@ -2561,6 +2578,7 @@ export function MoonGoonsGame() {
           warning: [170, 115, 0.24],
           launch: [105, 340, 0.52],
           bounce: [155, 92, 0.13],
+          catch: [230, 980, 0.3],
           break: [640, 88, 0.42],
           step: [92, 72, 0.055],
           repair: [125, 540, 0.14],
@@ -2580,6 +2598,8 @@ export function MoonGoonsGame() {
         gain.gain.setValueAtTime(
           (tone === "step"
             ? 0.018
+            : tone === "catch"
+              ? 0.06
             : tone === "repair"
               ? 0.042
               : tone === "relay"
@@ -2986,6 +3006,8 @@ export function MoonGoonsGame() {
     let repairKick = 0;
     let damageCooldown = 0;
     let airmailFlash = 0;
+    let catchNotice = "";
+    let catchNoticeTimer = 0;
     let currentThrowPrediction: ReturnType<typeof predictCargoThrow> | null = null;
     let animationFrame = 0;
     let previous = performance.now();
@@ -3057,6 +3079,8 @@ export function MoonGoonsGame() {
         fieldCase.velocity = [0, 0, 0];
         fieldCase.isBallistic = false;
         fieldCase.bounceCount = 0;
+        fieldCase.thrownById = null;
+        fieldCase.lastCatchRewardAt = -Infinity;
         fieldCase.group.position.fromArray(fieldToolCaseStarts[index][2]);
         fieldCase.group.rotation.set(0, index * 0.08 - 0.08, 0);
         fieldCase.group.scale.setScalar(1);
@@ -3203,6 +3227,35 @@ export function MoonGoonsGame() {
         }))
         .sort((a, b) => a.distance - b.distance)[0] ?? null;
 
+    const registerMidairCatch = (
+      ownerName: string,
+      objectName: string,
+      speed: number,
+      bounceCount: number,
+      equipmentCase: boolean,
+      rewardEligible = true,
+    ) => {
+      const bonus = rewardEligible
+        ? calculateCatchBonus(speed, bounceCount, equipmentCase)
+        : 0;
+      if (equipmentCase) caseCatchesRef.current += 1;
+      else cargoCatchesRef.current += 1;
+      catchBonusRef.current += bonus;
+      stuntBonusRef.current += bonus;
+      scoreRef.current += bonus;
+      catchNotice = `${equipmentCase ? "CASE HANDOFF" : "MID-AIR CATCH"} // ${
+        bonus > 0 ? `+¢${bonus}` : "STYLE ONLY"
+      }`;
+      catchNoticeTimer = 2.15;
+      cameraImpact = Math.max(cameraImpact, 0.3);
+      airmailFlash = 1;
+      messageRef.current = `${ownerName} CAUGHT ${objectName.toUpperCase()} AT ${speed.toFixed(
+        1,
+      )} m/s. S.P.A.C.E. HAS CLASSIFIED THIS AS TEAMWORK.`;
+      sound("catch");
+      return bonus;
+    };
+
     const pickupFieldToolCase = (
       ownerId: string,
       ownerName: string,
@@ -3213,18 +3266,47 @@ export function MoonGoonsGame() {
       }
       const nearest = nearestLooseFieldToolCase(ownerPosition);
       if (!nearest || nearest.distance > FIELD_CASE_PICKUP_RANGE) return false;
+      const caught = nearest.fieldCase.isBallistic;
+      const handoff =
+        nearest.fieldCase.thrownById !== null &&
+        nearest.fieldCase.thrownById !== ownerId;
+      const rewardEligible =
+        handoff &&
+        performance.now() - nearest.fieldCase.lastCatchRewardAt >= 8_000;
+      const catchSpeed = new THREE.Vector3()
+        .fromArray(nearest.fieldCase.velocity)
+        .length();
+      const catchBounces = nearest.fieldCase.bounceCount;
       nearest.fieldCase.ownerId = ownerId;
       nearest.fieldCase.velocity = [0, 0, 0];
       nearest.fieldCase.isBallistic = false;
       nearest.fieldCase.bounceCount = 0;
+      nearest.fieldCase.thrownById = null;
       if (ownerId === (crewSessionRef.current?.memberId ?? "solo")) {
         activeHarvestToolRef.current = nearest.fieldCase.toolId;
         setAstronautHarvestTool(astronaut, nearest.fieldCase.toolId);
       }
-      messageRef.current = `${ownerName} CLAIMED THE ${harvestToolData[
-        nearest.fieldCase.toolId
-      ].name.toUpperCase()} SPECIALIST CASE. MATCHING EXTRACTION OUTPUT +30%.`;
-      sound("pickup");
+      if (caught && handoff) {
+        registerMidairCatch(
+          ownerName,
+          `${harvestToolData[nearest.fieldCase.toolId].name} specialist case`,
+          catchSpeed,
+          catchBounces,
+          true,
+          rewardEligible,
+        );
+        if (rewardEligible) nearest.fieldCase.lastCatchRewardAt = performance.now();
+      } else if (caught) {
+        messageRef.current = `${ownerName} RECLAIMED THEIR OWN ${harvestToolData[
+          nearest.fieldCase.toolId
+        ].name.toUpperCase()} CASE. ATHLETIC, BUT NOT A HANDOFF.`;
+        sound("pickup");
+      } else {
+        messageRef.current = `${ownerName} CLAIMED THE ${harvestToolData[
+          nearest.fieldCase.toolId
+        ].name.toUpperCase()} SPECIALIST CASE. MATCHING EXTRACTION OUTPUT +30%.`;
+        sound("pickup");
+      }
       return true;
     };
 
@@ -3250,6 +3332,7 @@ export function MoonGoonsGame() {
       owned.group.position.y += 1.6;
       owned.group.scale.setScalar(1);
       owned.ownerId = null;
+      owned.thrownById = ownerId;
       owned.velocity = [forward.x * 8.6, 4.8, forward.z * 8.6];
       owned.isBallistic = true;
       owned.bounceCount = 0;
@@ -3257,6 +3340,62 @@ export function MoonGoonsGame() {
         owned.toolId
       ].name.toUpperCase()} CASE. CATCHING IT IS OPTIONAL BUT EFFICIENT.`;
       sound("launch");
+      return true;
+    };
+
+    const catchBallisticCargo = (
+      ownerId: string,
+      ownerName: string,
+      ownerPosition: THREE.Vector3,
+    ) => {
+      if (deposits.some((deposit) => deposit.ownerId === ownerId)) return false;
+      const nearest = deposits
+        .filter(
+          (deposit) =>
+            deposit.state === "cargo" &&
+            deposit.ownerId === null &&
+            deposit.isBallistic,
+        )
+        .map((deposit) => ({
+          deposit,
+          distance: deposit.group
+            .getWorldPosition(new THREE.Vector3())
+            .distanceTo(ownerPosition.clone().add(new THREE.Vector3(0, 1.25, 0))),
+        }))
+        .sort((a, b) => a.distance - b.distance)[0];
+      if (!nearest || nearest.distance > 3.05) return false;
+      const catchSpeed = nearest.deposit.velocity.length();
+      const catchBounces = nearest.deposit.bounceCount;
+      const thrownById = nearest.deposit.group.userData.thrownById as
+        | string
+        | undefined;
+      const lastCatchRewardAt = Number(
+        nearest.deposit.group.userData.lastCatchRewardAt ?? -Infinity,
+      );
+      const rewardEligible =
+        thrownById !== ownerId &&
+        performance.now() - lastCatchRewardAt >= 8_000;
+      nearest.deposit.ownerId = ownerId;
+      nearest.deposit.tetherOwnerIds = [];
+      nearest.deposit.velocity.set(0, 0, 0);
+      nearest.deposit.isBallistic = false;
+      nearest.deposit.bounceCount = 0;
+      nearest.deposit.group.userData.thrownById = null;
+      if (ownerId === (crewSessionRef.current?.memberId ?? "solo")) {
+        carryingRef.current = nearest.deposit.id;
+        tutorialCarriedRef.current = true;
+      }
+      registerMidairCatch(
+        ownerName,
+        cargoData[nearest.deposit.kind].name,
+        catchSpeed,
+        catchBounces,
+        false,
+        rewardEligible,
+      );
+      if (rewardEligible) {
+        nearest.deposit.group.userData.lastCatchRewardAt = performance.now();
+      }
       return true;
     };
 
@@ -3602,6 +3741,9 @@ export function MoonGoonsGame() {
       stuntBonusRef.current = 0;
       cargoBouncesRef.current = 0;
       brokenSamplesRef.current = 0;
+      cargoCatchesRef.current = 0;
+      caseCatchesRef.current = 0;
+      catchBonusRef.current = 0;
       suitIntegrityRef.current = 100;
       downedRef.current = false;
       recoveryProgressRef.current = 0;
@@ -3628,6 +3770,8 @@ export function MoonGoonsGame() {
       repairKick = 0;
       damageCooldown = 0;
       airmailFlash = 0;
+      catchNotice = "";
+      catchNoticeTimer = 0;
       processedAuthorityRevisionRef.current = 0;
       processedCrewActionRef.current = 0;
       currentThrowPrediction = null;
@@ -4155,6 +4299,30 @@ export function MoonGoonsGame() {
       stuntBonusRef.current = state.stats.stuntBonus;
       cargoBouncesRef.current = state.stats.cargoBounces;
       brokenSamplesRef.current = state.stats.brokenSamples;
+      const previousCargoCatches = cargoCatchesRef.current;
+      const previousCaseCatches = caseCatchesRef.current;
+      const previousCatchBonus = catchBonusRef.current;
+      const incomingCargoCatches = state.stats.cargoCatches ?? 0;
+      const incomingCaseCatches = state.stats.caseCatches ?? 0;
+      const incomingCatchBonus = state.stats.catchBonus ?? 0;
+      if (
+        incomingCargoCatches + incomingCaseCatches >
+        previousCargoCatches + previousCaseCatches
+      ) {
+        const equipmentCatch = incomingCaseCatches > previousCaseCatches;
+        const catchBonusDelta = Math.max(
+          0,
+          incomingCatchBonus - previousCatchBonus,
+        );
+        catchNotice = `${equipmentCatch ? "CASE HANDOFF" : "MID-AIR CATCH"} // ${
+          catchBonusDelta > 0 ? `+¢${catchBonusDelta}` : "STYLE ONLY"
+        }`;
+        catchNoticeTimer = 2.15;
+        sound("catch");
+      }
+      cargoCatchesRef.current = incomingCargoCatches;
+      caseCatchesRef.current = incomingCaseCatches;
+      catchBonusRef.current = incomingCatchBonus;
 
       if (state.cart) {
         cartOwnerId = state.cart.ownerId;
@@ -4379,6 +4547,7 @@ export function MoonGoonsGame() {
           held.tetherOwnerIds = [];
           held.group.scale.setScalar(1);
           if (action.type === "throw") {
+            held.group.userData.thrownById = member.id;
             held.velocity.copy(forward).multiplyScalar(cargoData[held.kind].throwSpeed);
             held.velocity.y = cargoData[held.kind].throwLift;
             held.isBallistic = true;
@@ -4391,6 +4560,13 @@ export function MoonGoonsGame() {
             held.bounceCount = 0;
             messageRef.current = `${member.name} placed ${cargoData[held.kind].name}. Suspiciously careful.`;
           }
+          return;
+        }
+
+        if (
+          action.type === "interact" &&
+          catchBallisticCargo(member.id, member.name, memberPosition)
+        ) {
           return;
         }
 
@@ -4420,6 +4596,23 @@ export function MoonGoonsGame() {
               a.group.position.distanceTo(memberPosition) -
               b.group.position.distanceTo(memberPosition),
           )[0];
+        const catchAnchor = astronaut.position
+          .clone()
+          .add(new THREE.Vector3(0, 1.25, 0));
+        const nearbyCatchableCargo = deposits
+          .filter(
+            (deposit) =>
+              deposit.state === "cargo" &&
+              deposit.ownerId === null &&
+              deposit.isBallistic,
+          )
+          .map((deposit) => ({
+            deposit,
+            distance: deposit.group
+              .getWorldPosition(new THREE.Vector3())
+              .distanceTo(catchAnchor),
+          }))
+          .sort((a, b) => a.distance - b.distance)[0];
         if (nearbyCargo && nearbyCargo.group.position.distanceTo(memberPosition) < 3.2) {
           nearbyCargo.ownerId = member.id;
           nearbyCargo.tetherOwnerIds = [];
@@ -4558,6 +4751,7 @@ export function MoonGoonsGame() {
       const dt = Math.min((now - previous) / 1000, 0.04);
       previous = now;
       hudTimer += dt;
+      catchNoticeTimer = Math.max(0, catchNoticeTimer - dt);
       const keys = keysRef.current;
       const pad = readStandardGamepad(
         typeof navigator.getGamepads === "function"
@@ -6095,6 +6289,7 @@ export function MoonGoonsGame() {
                 held.group.position.y = throwing ? 2.4 + playerHeight : 0.62;
                 held.group.scale.setScalar(1);
                 if (throwing) {
+                  held.group.userData.thrownById = session?.memberId ?? "solo";
                   held.velocity
                     .copy(dropDirection)
                     .setLength(cargoData[held.kind].throwSpeed)
@@ -6136,6 +6331,14 @@ export function MoonGoonsGame() {
                   b.position.distanceTo(astronaut.position),
               )[0];
             if (
+              catchBallisticCargo(
+                session?.memberId ?? "solo",
+                session?.name ?? "SOLO GOON",
+                astronaut.position,
+              )
+            ) {
+              // Cargo remains airborne until a player commits to the catch.
+            } else if (
               pickupFieldToolCase(
                 session?.memberId ?? "solo",
                 session?.name ?? "SOLO GOON",
@@ -6560,13 +6763,26 @@ export function MoonGoonsGame() {
         ) {
           prompt = `E · CONNECT REBOOT LEAD // ${nearbyDownedCrew.member.name.toUpperCase()} · TEAM RECOVERY`;
         } else if (
+          nearbyCatchableCargo &&
+          nearbyCatchableCargo.distance <= 3.05
+        ) {
+          prompt = `E · CATCH ${cargoData[
+            nearbyCatchableCargo.deposit.kind
+          ].name.toUpperCase()} // MID-AIR BONUS`;
+        } else if (
           nearbyLooseFieldCase &&
           nearbyLooseFieldCase.distance <= FIELD_CASE_PICKUP_RANGE &&
           !localSpecialistCase
         ) {
-          prompt = `E · CLAIM ${harvestToolData[
+          prompt = `E · ${
+            nearbyLooseFieldCase.fieldCase.isBallistic ? "CATCH" : "CLAIM"
+          } ${harvestToolData[
             nearbyLooseFieldCase.fieldCase.toolId
-          ].name.toUpperCase()} SPECIALIST CASE // +30% MATCHED OUTPUT`;
+          ].name.toUpperCase()} SPECIALIST CASE // ${
+            nearbyLooseFieldCase.fieldCase.isBallistic
+              ? "HANDOFF BONUS"
+              : "+30% MATCHED OUTPUT"
+          }`;
         } else if (
           cartCargoIds.length > 0 &&
           cartReceiverDistance < 4.8 &&
@@ -6765,6 +6981,9 @@ export function MoonGoonsGame() {
               stuntBonus: stuntBonusRef.current,
               cargoBounces: cargoBouncesRef.current,
               brokenSamples: brokenSamplesRef.current,
+              cargoCatches: cargoCatchesRef.current,
+              caseCatches: caseCatchesRef.current,
+              catchBonus: catchBonusRef.current,
             },
           };
         }
@@ -6792,6 +7011,10 @@ export function MoonGoonsGame() {
           stuntBonus: stuntBonusRef.current,
           cargoBounces: cargoBouncesRef.current,
           brokenSamples: brokenSamplesRef.current,
+          cargoCatches: cargoCatchesRef.current,
+          caseCatches: caseCatchesRef.current,
+          catchBonus: catchBonusRef.current,
+          catchNotice: catchNoticeTimer > 0 ? catchNotice : null,
           missionSeed: missionSeedRef.current,
           suitIntegrity: suitIntegrityRef.current,
           downed: downedRef.current,
@@ -6971,6 +7194,10 @@ export function MoonGoonsGame() {
       stuntBonus: 0,
       cargoBounces: 0,
       brokenSamples: 0,
+      cargoCatches: 0,
+      caseCatches: 0,
+      catchBonus: 0,
+      catchNotice: null,
       missionSeed: missionSeedRef.current,
       suitIntegrity: 100,
       downed: false,
@@ -7039,6 +7266,7 @@ export function MoonGoonsGame() {
       data-phase={snapshot.phase}
       data-destination={activeDestination.id}
       data-high-contrast={controlSettings.highContrast || undefined}
+      data-hud-density={controlSettings.hudDensity}
       data-quality={controlSettings.renderQuality}
       style={{ "--hud-scale": controlSettings.hudScale } as CSSProperties}
     >
@@ -7065,7 +7293,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 032 // SPECIALIST HANDOFF</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 033 // CATCH + CLARITY</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -7166,9 +7394,13 @@ export function MoonGoonsGame() {
                 {snapshot.depositsSecured} secured · {snapshot.airmailDeliveries}{" "}
                 airmail · {snapshot.bankShotDeliveries} bank shots
               </span>
-              <span>
+              <span className={styles.secondaryTelemetry}>
                 {snapshot.cargoBounces} bounces · {snapshot.brokenSamples} broken · ¢
                 {snapshot.stuntBonus} bonus
+              </span>
+              <span>
+                {snapshot.cargoCatches} catches · {snapshot.caseCatches} case handoffs · ¢
+                {snapshot.catchBonus} catch bonus
               </span>
               <span>
                 CART {snapshot.cartCargoCount}/{snapshot.cartCapacity} · {snapshot.cartHitched
@@ -7264,7 +7496,7 @@ export function MoonGoonsGame() {
                 }}
               />
             </div>
-            <div className={styles.utilityToolStatus}>
+            <div className={`${styles.utilityToolStatus} ${styles.secondaryTelemetry}`}>
               <span>FIELD KIT TAB / WHEEL</span>
               <strong>DRILL · CORER · SIPHON</strong>
             </div>
@@ -7370,11 +7602,11 @@ export function MoonGoonsGame() {
                   : `CHARGING ${snapshot.magnetCooldown.toFixed(1)}s`}
               </strong>
             </div>
-            <div className={styles.utilityToolStatus}>
+            <div className={`${styles.utilityToolStatus} ${styles.secondaryTelemetry}`}>
               <span>STABILIZER C</span>
               <strong>{snapshot.stabilizerCharges} FOAM CHARGES</strong>
             </div>
-            <div className={styles.utilityToolStatus}>
+            <div className={`${styles.utilityToolStatus} ${styles.secondaryTelemetry}`}>
               <span>CARGO CART H</span>
               <strong>
                 {snapshot.cartHitched
@@ -7409,9 +7641,9 @@ export function MoonGoonsGame() {
               <span><kbd>A</kbd> HOP / BOOST</span>
               <span><kbd>X</kbd> USE / CARGO</span>
               <span><kbd>RT</kbd> USE TOOL</span>
-              <span><kbd>D↑</kbd> FLIP POLARITY</span>
+              <span className={styles.advancedControl}><kbd>D↑</kbd> FLIP POLARITY</span>
               <span><kbd>VIEW</kbd> CYCLE TOOL</span>
-              <span><kbd>RB</kbd> TOSS CASE / CARGO</span>
+              <span className={styles.advancedControl}><kbd>RB</kbd> TOSS CASE / CARGO</span>
               <span><kbd>START</kbd> MENU</span>
             </div>
           )}
@@ -7449,11 +7681,11 @@ export function MoonGoonsGame() {
               <kbd>Q</kbd>
               <span>SCAN</span>
             </div>
-            <div>
+            <div className={styles.advancedControl}>
               <kbd>G / V</kbd>
               <span>POLARITY / FLIP</span>
             </div>
-            <div>
+            <div className={styles.advancedControl}>
               <kbd>X</kbd>
               <span>TOSS SPECIALIST CASE</span>
             </div>
@@ -7472,6 +7704,13 @@ export function MoonGoonsGame() {
             </span>
             <strong>{snapshot.prompt}</strong>
           </div>
+
+          {snapshot.catchNotice && (
+            <div className={styles.stuntCallout} role="status" aria-live="polite">
+              <span>CREW COORDINATION REGISTERED</span>
+              <strong>{snapshot.catchNotice}</strong>
+            </div>
+          )}
 
           {snapshot.score >= snapshot.contractTarget && (
             <div className={styles.launchButton}>
@@ -7595,6 +7834,18 @@ export function MoonGoonsGame() {
               <div>
                 <span>STUNT BONUS</span>
                 <strong>¢{snapshot.stuntBonus}</strong>
+              </div>
+              <div>
+                <span>MID-AIR CATCHES</span>
+                <strong>{snapshot.cargoCatches}</strong>
+              </div>
+              <div>
+                <span>CASE HANDOFFS</span>
+                <strong>{snapshot.caseCatches}</strong>
+              </div>
+              <div>
+                <span>CATCH BONUS</span>
+                <strong>¢{snapshot.catchBonus}</strong>
               </div>
               <div>
                 <span>MISSION GROSS</span>

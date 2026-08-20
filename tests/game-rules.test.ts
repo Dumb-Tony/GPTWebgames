@@ -16,6 +16,7 @@ import {
   calculateCargoImpact,
   calculateCargoImpactCondition,
   calculateCargoValue,
+  calculateCatchBonus,
   cargoCartManifestValue,
   cargoCartTowMultiplier,
   calculateTetherPull,
@@ -441,11 +442,13 @@ test("control preferences reject invalid values and clamp extreme tuning", () =>
   assert.equal(accessible.cameraShake, 0);
   assert.equal(accessible.highContrast, true);
   assert.equal(accessible.hudScale, 1.2);
+  assert.equal(accessible.hudDensity, "compact");
   assert.equal(accessible.renderQuality, "balanced");
   assert.equal(accessible.missionGuide, false);
   assert.equal(renderPixelRatioCap("low"), 1);
   assert.equal(renderPixelRatioCap("balanced"), 1.5);
   assert.equal(renderPixelRatioCap("high"), 2);
+  assert.equal(normalizeControlSettings({ hudDensity: "full" }).hudDensity, "full");
 });
 
 test("standard controllers apply deadzones and expose the complete field control set", () => {
@@ -529,4 +532,12 @@ test("specialist cases reward matching tools without locking the basic kit", () 
   assert.equal(fieldCaseHarvestMultiplier("siphon", "siphon"), 1.3);
   assert.equal(fieldCaseHarvestMultiplier("drill", "corer"), 1);
   assert.equal(fieldCaseHarvestMultiplier(null, "siphon"), 1);
+});
+
+test("mid-air catch bonuses reward speed and ricochets without enabling runaway payouts", () => {
+  assert.equal(calculateCatchBonus(0, 0), 18);
+  assert.equal(calculateCatchBonus(6, 1), 35);
+  assert.equal(calculateCatchBonus(40, 20), 62);
+  assert.equal(calculateCatchBonus(40, 20, true), 40);
+  assert.equal(calculateCatchBonus(Number.NaN, -4, true), 10);
 });
