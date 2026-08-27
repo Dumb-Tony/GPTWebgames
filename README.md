@@ -6,6 +6,8 @@ Moon Goons is a browser-first cooperative space extraction game. This repository
 
 ## Playable build
 
+**[Launch the public Moon Goons playtest](https://dumb-tony.github.io/GPTWebgames/)**
+
 The first prototype includes:
 
 - Third-person low-gravity movement and moon hopping
