@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 033: Catch + Clarity, a game-feel and interface-polish pass layered onto the Specialist Handoff, Crew Signals, Rust Belt Polarity Annex, and retro-NASA field test introduced in Builds 021–032.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 034: Mission Pressure, a pacing and field-readability pass layered onto the Catch + Clarity, Specialist Handoff, Crew Signals, Rust Belt Polarity Annex, and retro-NASA field tests introduced in Builds 021–033.
 
 ## Playable build
 
@@ -163,7 +163,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 033 is a focused game-feel and readability pass. Airborne cargo can now be caught directly, teammate specialist-case catches register as real handoffs, and both award bounded speed-and-ricochet bonuses with synchronized audio, camera, HUD, radio, and debrief feedback. The mission interface now defaults to a compact presentation that removes secondary telemetry and advanced control reminders while retaining a Full Telemetry option in Control Tuning. Remaining cooperation work includes longer four-player soak testing; Milestone 9 still requires remappable action bindings and broader accessibility auditing.
+Build 034 turns the mission clock into a readable escalating director. A centered field order continuously identifies the crew's next best action, remaining quota, lander distance, carried sample, and launch state without replacing contextual tool prompts. Hazard, return, and critical windows now have distinct instrument treatments, one-minute and ten-second audio cues, a final countdown, and stronger automatic-departure feedback. Build 033's compact HUD, catches, specialist handoffs, and multiplayer synchronization remain intact. Remaining cooperation work includes longer four-player soak testing; Milestone 9 still requires remappable action bindings and broader accessibility auditing.
 
 ## Design references
 

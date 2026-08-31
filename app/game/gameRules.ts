@@ -346,6 +346,160 @@ export function formatTime(seconds: number) {
   return `${Math.floor(safe / 60)}:${String(safe % 60).padStart(2, "0")}`;
 }
 
+export type MissionPressureStage =
+  | "nominal"
+  | "hazard"
+  | "return"
+  | "critical";
+
+export type MissionDirective = {
+  stage: MissionPressureStage;
+  label: string;
+  headline: string;
+  detail: string;
+};
+
+export type MissionDirectiveInput = {
+  time: number;
+  score: number;
+  target: number;
+  hazardWindow: number;
+  homeDistance: number;
+  carrying: string | null;
+  signalsTracked: number;
+  nearestSignalDistance: number | null;
+};
+
+export function missionPressureStage(
+  time: number,
+  hazardWindow: number,
+): MissionPressureStage {
+  const safeTime = Math.max(0, Number.isFinite(time) ? time : 0);
+  const safeHazardWindow = Math.max(
+    0,
+    Number.isFinite(hazardWindow) ? hazardWindow : 0,
+  );
+  if (safeTime <= 10) return "critical";
+  if (safeTime <= 30) return "return";
+  if (safeTime <= safeHazardWindow) return "hazard";
+  return "nominal";
+}
+
+export function createMissionDirective({
+  time,
+  score,
+  target,
+  hazardWindow,
+  homeDistance,
+  carrying,
+  signalsTracked,
+  nearestSignalDistance,
+}: MissionDirectiveInput): MissionDirective {
+  const safeScore = Math.max(0, Math.round(Number.isFinite(score) ? score : 0));
+  const safeTarget = Math.max(0, Math.round(Number.isFinite(target) ? target : 0));
+  const safeTime = Math.max(0, Number.isFinite(time) ? time : 0);
+  const safeHomeDistance = Math.max(
+    0,
+    Math.round(Number.isFinite(homeDistance) ? homeDistance : 0),
+  );
+  const shortage = Math.max(0, safeTarget - safeScore);
+  const secured = shortage === 0;
+  const aboard = safeHomeDistance <= 7;
+  const stage = missionPressureStage(safeTime, hazardWindow);
+  const clock = formatTime(safeTime);
+
+  if (stage === "critical") {
+    if (secured && aboard) {
+      return {
+        stage,
+        label: "LAUNCH AUTHORITY // IMMEDIATE",
+        headline: `PRESS E TO LAUNCH // ${clock}`,
+        detail: "CONTRACT SECURED · CREW EXPENDABLE",
+      };
+    }
+    if (secured) {
+      return {
+        stage,
+        label: "LAUNCH WINDOW // CLOSING",
+        headline: `RETURN NOW // LANDER ${safeHomeDistance}m`,
+        detail: `CONTRACT SECURED · ${clock} REMAINING`,
+      };
+    }
+    return {
+      stage,
+      label: "LAUNCH WINDOW // CLOSING",
+      headline: `¢${shortage} SHORT // ${clock}`,
+      detail: carrying
+        ? `DELIVER ${carrying.toUpperCase()} · LANDER ${safeHomeDistance}m`
+        : `ABORT PROCUREMENT · LANDER ${safeHomeDistance}m`,
+    };
+  }
+
+  if (secured) {
+    return aboard
+      ? {
+          stage,
+          label: "CONTRACT SECURED // LAUNCH READY",
+          headline: "PRESS E TO RETURN TO ORBIT",
+          detail: "ALL CARGO REMAINING OUTSIDE IS A PERSONAL DECISION",
+        }
+      : {
+          stage,
+          label: "CONTRACT SECURED // RETURN",
+          headline: `LANDER ${safeHomeDistance}m`,
+          detail: `${clock} REMAINING · DO NOT INVENT ANOTHER ERRAND`,
+        };
+  }
+
+  if (stage === "return") {
+    return {
+      stage,
+      label: "FINAL DEPARTURE // PROCUREMENT CLOSING",
+      headline: carrying
+        ? `DELIVER ${carrying.toUpperCase()} NOW`
+        : `¢${shortage} SHORT // LAST CHANCE`,
+      detail: `LANDER ${safeHomeDistance}m · ${clock} REMAINING`,
+    };
+  }
+
+  if (carrying) {
+    return {
+      stage,
+      label: "ACTIVE SAMPLE // DELIVER",
+      headline: `${carrying.toUpperCase()} → LANDER ${safeHomeDistance}m`,
+      detail: `¢${shortage} REMAINS ON CONTRACT`,
+    };
+  }
+
+  if (signalsTracked <= 0) {
+    return {
+      stage,
+      label: "MISSION PRIORITY // SURVEY",
+      headline: "PULSE SCANNER TO LOCATE SAMPLES",
+      detail: `¢${shortage} REMAINS · LANDER ${safeHomeDistance}m`,
+    };
+  }
+
+  if (nearestSignalDistance !== null && Number.isFinite(nearestSignalDistance)) {
+    return {
+      stage,
+      label: "MISSION PRIORITY // EXTRACT",
+      headline: `TRACK NEAREST SIGNAL // ${Math.max(
+        0,
+        Math.round(nearestSignalDistance),
+      )}m`,
+      detail: `¢${shortage} REMAINS · ${clock} ON CLOCK`,
+    };
+  }
+
+  return {
+    stage,
+    label: "MISSION PRIORITY // RECOVER",
+    headline: `SECURE ¢${shortage} MORE MATERIAL`,
+    detail: `LANDER ${safeHomeDistance}m · ${clock} ON CLOCK`,
+  };
+}
+
 export function formatSignalBearing(bearing: number) {
   const magnitude = Math.round(Math.abs(bearing));
   if (magnitude <= 12) return "AHEAD";

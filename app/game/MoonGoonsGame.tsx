@@ -58,11 +58,13 @@ import {
   cargoCartTowMultiplier,
   calculateTetherPull,
   cargoData,
+  createMissionDirective,
   createMissionDepositDefinitions,
   formatSignalBearing,
   formatTime,
   fieldCaseHarvestMultiplier,
   harvestToolData,
+  missionPressureStage,
   nextMissionSeed,
   nextHarvestTool,
   normalizeControlSettings,
@@ -2556,6 +2558,7 @@ export function MoonGoonsGame() {
         | "repair"
         | "relay"
         | "storm"
+        | "countdown"
         | "drill"
         | "siphon",
     ) => {
@@ -2584,11 +2587,12 @@ export function MoonGoonsGame() {
           repair: [125, 540, 0.14],
           relay: [182, 1180, 0.46],
           storm: [74, 510, 0.72],
+          countdown: [520, 610, 0.1],
           drill: [118, 86, 0.34],
           siphon: [210, 470, 0.28],
         }[tone];
         oscillator.type =
-          tone === "warning" || tone === "repair" || tone === "relay" || tone === "break" || tone === "storm"
+          tone === "warning" || tone === "repair" || tone === "relay" || tone === "break" || tone === "storm" || tone === "countdown"
             ? "square"
             : tone === "step" || tone === "drill"
               ? "triangle"
@@ -2606,6 +2610,8 @@ export function MoonGoonsGame() {
                 ? 0.048
               : tone === "storm"
                 ? 0.035
+              : tone === "countdown"
+                ? 0.04
                 : tone === "drill" || tone === "siphon"
                   ? 0.026
                   : 0.05) * volume,
@@ -2994,7 +3000,9 @@ export function MoonGoonsGame() {
     let thrusterCapacity = 100;
     let scanAnimation = 0;
     let hudTimer = 0;
+    let returnWarningPlayed = false;
     let warningPlayed = false;
+    let lastCountdownSecond = 0;
     let meteorWarningPlayed = false;
     let missionRandom = seededRandom(missionSeedRef.current + 704);
     let meteorCooldown = 5.5;
@@ -3759,7 +3767,9 @@ export function MoonGoonsGame() {
       tutorialScannedRef.current = false;
       tutorialDrilledRef.current = false;
       tutorialCarriedRef.current = false;
+      returnWarningPlayed = false;
       warningPlayed = false;
+      lastCountdownSecond = 0;
       meteorWarningPlayed = false;
       magneticStormCycle = -1;
       magneticStormPlayed = false;
@@ -4596,23 +4606,6 @@ export function MoonGoonsGame() {
               a.group.position.distanceTo(memberPosition) -
               b.group.position.distanceTo(memberPosition),
           )[0];
-        const catchAnchor = astronaut.position
-          .clone()
-          .add(new THREE.Vector3(0, 1.25, 0));
-        const nearbyCatchableCargo = deposits
-          .filter(
-            (deposit) =>
-              deposit.state === "cargo" &&
-              deposit.ownerId === null &&
-              deposit.isBallistic,
-          )
-          .map((deposit) => ({
-            deposit,
-            distance: deposit.group
-              .getWorldPosition(new THREE.Vector3())
-              .distanceTo(catchAnchor),
-          }))
-          .sort((a, b) => a.distance - b.distance)[0];
         if (nearbyCargo && nearbyCargo.group.position.distanceTo(memberPosition) < 3.2) {
           nearbyCargo.ownerId = member.id;
           nearbyCargo.tetherOwnerIds = [];
@@ -5160,10 +5153,38 @@ export function MoonGoonsGame() {
           }
         }
 
+        if (timeRef.current <= 60 && !returnWarningPlayed) {
+          returnWarningPlayed = true;
+          const shortage = Math.max(
+            0,
+            CONTRACTS[activeContractIdRef.current].target - scoreRef.current,
+          );
+          messageRef.current =
+            shortage === 0
+              ? "ONE MINUTE. Contract secured. Return to the lander before curiosity becomes paperwork."
+              : `ONE MINUTE. Procurement is still ¢${shortage} short and the ship has started warming its engines.`;
+          sound("countdown");
+        }
+
         if (timeRef.current <= 30 && !warningPlayed) {
           warningPlayed = true;
           messageRef.current = "FINAL DEPARTURE. The ship has stopped accepting excuses.";
           sound("warning");
+        }
+
+        const countdownSecond = Math.ceil(timeRef.current);
+        if (
+          countdownSecond > 0 &&
+          countdownSecond <= 10 &&
+          countdownSecond !== lastCountdownSecond
+        ) {
+          lastCountdownSecond = countdownSecond;
+          sound("countdown");
+          if (countdownSecond === 10 || countdownSecond <= 5) {
+            messageRef.current = `${countdownSecond} SECOND${
+              countdownSecond === 1 ? "" : "S"
+            } TO AUTOMATIC DEPARTURE. This is the loud part of the procedure.`;
+          }
         }
 
         const carried = deposits.find((deposit) => deposit.id === carryingRef.current);
@@ -7249,9 +7270,20 @@ export function MoonGoonsGame() {
   }, [snapshot.phase, stopAmbience]);
 
   const percent = Math.min(100, (snapshot.score / snapshot.contractTarget) * 100);
-  const urgent = snapshot.phase === "active" && snapshot.time <= 30;
   const activeDestination = DESTINATIONS[CONTRACTS[snapshot.contractId].destinationId];
   const debrisForecastWindow = activeDestination.id === "rust_belt" ? 82 : 55;
+  const urgent = snapshot.phase === "active" && snapshot.time <= 30;
+  const missionStage = missionPressureStage(snapshot.time, debrisForecastWindow);
+  const missionDirective = createMissionDirective({
+    time: snapshot.time,
+    score: snapshot.score,
+    target: snapshot.contractTarget,
+    hazardWindow: debrisForecastWindow,
+    homeDistance: snapshot.homeDistance,
+    carrying: snapshot.carrying,
+    signalsTracked: snapshot.signalsTracked,
+    nearestSignalDistance: snapshot.nearestSignalDistance,
+  });
   const selectedHarvestTool = harvestToolData[snapshot.activeHarvestTool];
   const harvestMeterLabel =
     snapshot.activeHarvestTool === "drill"
@@ -7268,6 +7300,7 @@ export function MoonGoonsGame() {
       data-high-contrast={controlSettings.highContrast || undefined}
       data-hud-density={controlSettings.hudDensity}
       data-quality={controlSettings.renderQuality}
+      data-mission-stage={snapshot.phase === "active" ? missionStage : undefined}
       style={{ "--hud-scale": controlSettings.hudScale } as CSSProperties}
     >
       <div
@@ -7293,7 +7326,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 033 // CATCH + CLARITY</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 034 // MISSION PRESSURE</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -7363,11 +7396,12 @@ export function MoonGoonsGame() {
             <i />
           </div>
 
-          <div className={styles.homeReadout}>
+          <div className={styles.homeReadout} data-stage={missionDirective.stage}>
             <span className={styles.homePulse} />
             <div>
-              <small>LANDER BEACON</small>
-              <strong>HOME // {Math.round(snapshot.homeDistance)}m</strong>
+              <small>{missionDirective.label}</small>
+              <strong>{missionDirective.headline}</strong>
+              <em>{missionDirective.detail}</em>
             </div>
           </div>
 
@@ -7714,7 +7748,9 @@ export function MoonGoonsGame() {
 
           {snapshot.score >= snapshot.contractTarget && (
             <div className={styles.launchButton}>
-              RETURN TO THE SHIP + PRESS E TO LAUNCH
+              {snapshot.homeDistance <= 7.2
+                ? "PRESS E TO LAUNCH // CONTRACT SECURED"
+                : `RETURN TO LANDER // ${Math.round(snapshot.homeDistance)}m`}
             </div>
           )}
         </>

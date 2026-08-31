@@ -193,7 +193,8 @@ test("production server renders the Moon Goons mission shell", async () => {
   assert.match(html, /Crew Link Uplink/);
   assert.match(html, /Playable third-person 3D The Practice Moon extraction mission/);
   assert.match(html, /DECK 03 \/\/ PROCUREMENT \+ CREW OPERATIONS/);
-  assert.match(html, /BUILD 033/);
+  assert.match(html, /BUILD 034/);
+  assert.match(html, /MISSION PRESSURE/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 

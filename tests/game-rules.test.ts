@@ -17,6 +17,7 @@ import {
   calculateCargoImpactCondition,
   calculateCargoValue,
   calculateCatchBonus,
+  createMissionDirective,
   cargoCartManifestValue,
   cargoCartTowMultiplier,
   calculateTetherPull,
@@ -25,6 +26,7 @@ import {
   formatSignalBearing,
   formatTime,
   missionMaximumValue,
+  missionPressureStage,
   nextHarvestTool,
   nextMissionSeed,
   normalizeControlSettings,
@@ -540,4 +542,63 @@ test("mid-air catch bonuses reward speed and ricochets without enabling runaway 
   assert.equal(calculateCatchBonus(40, 20), 62);
   assert.equal(calculateCatchBonus(40, 20, true), 40);
   assert.equal(calculateCatchBonus(Number.NaN, -4, true), 10);
+});
+
+test("mission pressure turns changing conditions into one clear crew directive", () => {
+  assert.equal(missionPressureStage(121, 55), "nominal");
+  assert.equal(missionPressureStage(55, 55), "hazard");
+  assert.equal(missionPressureStage(30, 55), "return");
+  assert.equal(missionPressureStage(10, 55), "critical");
+
+  const survey = createMissionDirective({
+    time: 140,
+    score: 0,
+    target: 900,
+    hazardWindow: 55,
+    homeDistance: 22,
+    carrying: null,
+    signalsTracked: 0,
+    nearestSignalDistance: null,
+  });
+  assert.equal(survey.headline, "PULSE SCANNER TO LOCATE SAMPLES");
+
+  const delivery = createMissionDirective({
+    time: 78,
+    score: 510,
+    target: 900,
+    hazardWindow: 55,
+    homeDistance: 31.6,
+    carrying: "Helium-3 Canister",
+    signalsTracked: 2,
+    nearestSignalDistance: 8,
+  });
+  assert.equal(delivery.headline, "HELIUM-3 CANISTER → LANDER 32m");
+  assert.equal(delivery.detail, "¢390 REMAINS ON CONTRACT");
+
+  const secured = createMissionDirective({
+    time: 24,
+    score: 940,
+    target: 900,
+    hazardWindow: 55,
+    homeDistance: 19,
+    carrying: null,
+    signalsTracked: 1,
+    nearestSignalDistance: 12,
+  });
+  assert.equal(secured.label, "CONTRACT SECURED // RETURN");
+  assert.equal(secured.headline, "LANDER 19m");
+
+  const critical = createMissionDirective({
+    time: 4.1,
+    score: 700,
+    target: 900,
+    hazardWindow: 55,
+    homeDistance: 12,
+    carrying: null,
+    signalsTracked: 1,
+    nearestSignalDistance: 6,
+  });
+  assert.equal(critical.stage, "critical");
+  assert.equal(critical.headline, "¢200 SHORT // 0:05");
+  assert.equal(critical.detail, "ABORT PROCUREMENT · LANDER 12m");
 });

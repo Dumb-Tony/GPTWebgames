@@ -2448,6 +2448,17 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Preserved the full company-minimum tool kit and existing cargo handling, so catching deepens
   cooperative play without becoming a mandatory role or blocking solo completion.
 
+**Prototype status — Build 034 Mission Pressure**
+
+- Added a single mission-directive instrument that continuously prioritizes scanning, signal pursuit,
+  carried-sample delivery, quota recovery, return-to-lander, and launch actions from live mission state.
+- Added distinct nominal, hazard, final-return, and critical-departure presentation stages without
+  hiding contextual tool or environmental warnings.
+- Added one-minute departure guidance, a ten-second audible countdown, stronger critical-window
+  framing, and explicit quota-short and lander-distance messaging.
+- Kept the director deterministic and covered by rules tests so solo and Crew Link clients derive the
+  same field order from synchronized state.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

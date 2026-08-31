@@ -43,6 +43,22 @@
   box-shadow: inset 0 0 120px rgba(0, 0, 0, 0.5);
 }
 
+.shell[data-mission-stage="hazard"]::after {
+  border-color: rgba(255, 134, 94, 0.2);
+  box-shadow: inset 0 0 150px rgba(93, 42, 18, 0.2);
+}
+
+.shell[data-mission-stage="return"]::after {
+  border: 2px solid rgba(255, 97, 111, 0.38);
+  box-shadow: inset 0 0 180px rgba(112, 19, 32, 0.3);
+}
+
+.shell[data-mission-stage="critical"]::after {
+  border: 4px solid rgba(255, 97, 111, 0.72);
+  box-shadow: inset 0 0 210px rgba(112, 19, 32, 0.48);
+  animation: criticalFrame 0.72s steps(2, end) infinite;
+}
+
 .shell::before {
   position: absolute;
   z-index: 3;
@@ -166,8 +182,9 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 176px;
-  padding: 9px 13px;
+  width: min(540px, calc(100vw - 420px));
+  min-width: 320px;
+  padding: 10px 16px;
   transform: translateX(-50%);
   border: 1px solid rgba(255, 216, 90, 0.28);
   background: rgba(7, 10, 20, 0.7);
@@ -180,6 +197,8 @@
   display: flex;
   flex-direction: column;
   gap: 2px;
+  width: 100%;
+  min-width: 0;
 }
 
 .homeReadout small {
@@ -190,8 +209,42 @@
 
 .homeReadout strong {
   color: var(--yellow);
-  font-size: 11px;
+  overflow: hidden;
+  font-size: 12px;
   letter-spacing: 0.08em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeReadout em {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 8px;
+  font-style: normal;
+  letter-spacing: 0.055em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.homeReadout[data-stage="hazard"] {
+  border-color: rgba(255, 134, 94, 0.48);
+  background: rgba(28, 14, 14, 0.82);
+}
+
+.homeReadout[data-stage="return"],
+.homeReadout[data-stage="critical"] {
+  border-color: rgba(255, 97, 111, 0.7);
+  background: rgba(38, 9, 16, 0.9);
+  box-shadow: 0 0 28px rgba(255, 97, 111, 0.16);
+}
+
+.homeReadout[data-stage="return"] strong,
+.homeReadout[data-stage="critical"] strong {
+  color: #fff;
+}
+
+.homeReadout[data-stage="critical"] {
+  animation: directiveCritical 0.72s steps(2, end) infinite;
 }
 
 .homePulse {
@@ -2825,6 +2878,20 @@
   }
 }
 
+@keyframes criticalFrame {
+  50% {
+    border-color: rgba(255, 216, 90, 0.76);
+    box-shadow: inset 0 0 240px rgba(112, 19, 32, 0.62);
+  }
+}
+
+@keyframes directiveCritical {
+  50% {
+    border-color: var(--yellow);
+    box-shadow: 0 0 38px rgba(255, 97, 111, 0.3);
+  }
+}
+
 @keyframes catchCallout {
   from {
     opacity: 0;
@@ -2873,8 +2940,13 @@
 
   .homeReadout {
     top: 76px;
-    min-width: 150px;
+    width: min(76vw, 440px);
+    min-width: 250px;
     padding: 7px 10px;
+  }
+
+  .homeReadout em {
+    display: none;
   }
 
   .mouseCapture,
@@ -3096,7 +3168,9 @@
 @media (prefers-reduced-motion: reduce) {
   .urgent,
   .actionPrompt[data-risk="SHATTER"],
-  .homePulse {
+  .homePulse,
+  .shell[data-mission-stage="critical"]::after,
+  .homeReadout[data-stage="critical"] {
     animation: none;
   }
 
