@@ -2459,6 +2459,18 @@ This plan is written so an AI coding assistant such as Claude can implement one 
 - Kept the director deterministic and covered by rules tests so solo and Crew Link clients derive the
   same field order from synchronized state.
 
+**Prototype status — Build 035 Control Calibration**
+
+- Added persistent rebinding for the complete keyboard field set: movement, hop/boost, scanner,
+  harvesting, interaction, repair, tool cycling, crew ping, tether, cargo cart, magnetic retriever,
+  polarity, sample stabilization, and specialist-case throwing.
+- Made occupied-key selection swap assignments, constrained accepted inputs to readable gameplay
+  keys, rejected invalid inputs, and normalized older or malformed settings without duplicate actions.
+- Routed the active bindings through the orbital hub, field simulation, network input mask, mission
+  HUD, contextual actions, cargo instructions, repair guidance, and final launch director.
+- Preserved fixed arrow-key fallback steering, number-key quick pings, mouse look, mouse-wheel tool
+  cycling, and the existing standardized controller layout.
+
 ## Milestone 10: Content Pipeline
 
 **Deliverables**

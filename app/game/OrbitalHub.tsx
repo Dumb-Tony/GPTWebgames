@@ -7,7 +7,12 @@ import {
   primaryGamepad,
   readStandardGamepad,
 } from "./gamepad";
-import { renderPixelRatioCap, type ControlSettings } from "./gameRules";
+import {
+  formatKeyboardCode,
+  renderPixelRatioCap,
+  type ControlSettings,
+  type KeyboardBindings,
+} from "./gameRules";
 import styles from "./game.module.css";
 
 export type HubStationId = "contracts" | "equipment" | "crew" | "maintenance";
@@ -205,6 +210,7 @@ export function OrbitalHub({
   research,
   lastRepairBill,
   renderQuality,
+  keyboardBindings,
   interactive,
   onOpenStation,
 }: {
@@ -212,6 +218,7 @@ export function OrbitalHub({
   research: number;
   lastRepairBill: number;
   renderQuality: ControlSettings["renderQuality"];
+  keyboardBindings: KeyboardBindings;
   interactive: boolean;
   onOpenStation: (station: HubStationId) => void;
 }) {
@@ -219,6 +226,7 @@ export function OrbitalHub({
   const interactiveRef = useRef(interactive);
   const openStationRef = useRef(onOpenStation);
   const qualityRef = useRef(renderQuality);
+  const keyboardBindingsRef = useRef(keyboardBindings);
   const [mouseCaptured, setMouseCaptured] = useState(false);
   const [controllerConnected, setControllerConnected] = useState(false);
   const [nearestStation, setNearestStation] = useState<HubStation | null>(null);
@@ -236,6 +244,10 @@ export function OrbitalHub({
     qualityRef.current = renderQuality;
     window.dispatchEvent(new Event("resize"));
   }, [renderQuality]);
+
+  useEffect(() => {
+    keyboardBindingsRef.current = keyboardBindings;
+  }, [keyboardBindings]);
 
   const openFallback = useCallback(() => {
     if (document.pointerLockElement) document.exitPointerLock();
@@ -453,8 +465,15 @@ export function OrbitalHub({
       if (!interactiveRef.current) return;
       const target = event.target as HTMLElement | null;
       if (target?.matches("input, textarea, select, button")) return;
+      if (Object.values(keyboardBindingsRef.current).includes(event.code)) {
+        event.preventDefault();
+      }
       keys.add(event.code);
-      if (event.code === "KeyE" && !event.repeat && nearest) {
+      if (
+        event.code === keyboardBindingsRef.current.interact &&
+        !event.repeat &&
+        nearest
+      ) {
         event.preventDefault();
         if (document.pointerLockElement === renderer.domElement) document.exitPointerLock();
         openStationRef.current(nearest.id);
@@ -500,11 +519,13 @@ export function OrbitalHub({
           setControllerConnected(pad.connected);
         }
       }
+      const activeBindings = keyboardBindingsRef.current;
       const keyboardForward =
-        (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-        (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+        (keys.has(activeBindings.forward) || keys.has("ArrowUp") ? 1 : 0) -
+        (keys.has(activeBindings.backward) || keys.has("ArrowDown") ? 1 : 0);
       const keyboardStrafe =
-        (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+        (keys.has(activeBindings.strafeRight) ? 1 : 0) -
+        (keys.has(activeBindings.strafeLeft) ? 1 : 0);
       const forwardInput = keyboardForward || -pad.moveY;
       const strafeInput = keyboardStrafe || pad.moveX;
       const fallbackTurn =
@@ -664,13 +685,19 @@ export function OrbitalHub({
       {!mouseCaptured && !controllerConnected && (
         <div className={styles.hubWalkControls}>
           <span>CLICK DECK TO LOCK MOUSE</span>
-          <small>W/S MOVE · A/D STRAFE · MOUSE LOOK · E USE</small>
+          <small>
+            {formatKeyboardCode(keyboardBindings.forward)}/{formatKeyboardCode(keyboardBindings.backward)} MOVE · {formatKeyboardCode(keyboardBindings.strafeLeft)}/{formatKeyboardCode(keyboardBindings.strafeRight)} STRAFE · MOUSE LOOK · {formatKeyboardCode(keyboardBindings.interact)} USE
+          </small>
         </div>
       )}
       <div className={`${styles.hubInteract} ${nearestStation ? styles.hubInteractReady : ""}`}>
         {nearestStation ? (
           <>
-            <kbd>{controllerConnected ? "X" : "E"}</kbd>
+            <kbd>
+              {controllerConnected
+                ? "X"
+                : formatKeyboardCode(keyboardBindings.interact)}
+            </kbd>
             <div>
               <span>{nearestStation.code} {"//"} {nearestStation.name}</span>
               <strong>{nearestStation.action}</strong>

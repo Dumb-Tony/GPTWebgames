@@ -60,6 +60,7 @@ import {
   cargoData,
   createMissionDirective,
   createMissionDepositDefinitions,
+  formatKeyboardCode,
   formatSignalBearing,
   formatTime,
   fieldCaseHarvestMultiplier,
@@ -2293,7 +2294,9 @@ export function MoonGoonsGame() {
     cartHitched: false,
     cartDistance: 10,
     depositsSecured: 0,
-    prompt: "Q · SCAN FOR VALUABLE MATERIAL",
+    prompt: `${formatKeyboardCode(
+      controlSettings.keyboardBindings.scan,
+    )} · SCAN FOR VALUABLE MATERIAL`,
     homeDistance: 7,
     thrusterFuel: 100,
     signalsTracked: 0,
@@ -3537,7 +3540,9 @@ export function MoonGoonsGame() {
         return true;
       }
       if (!alignment.accepted) {
-        messageRef.current = `RELAY ${index + 1} REJECTED ${mode.toUpperCase()} POLARITY. TAP V AND TRY THE OTHER BAD IDEA.`;
+        messageRef.current = `RELAY ${index + 1} REJECTED ${mode.toUpperCase()} POLARITY. TAP ${formatKeyboardCode(
+          controlSettingsRef.current.keyboardBindings.polarity,
+        )} AND TRY THE OTHER BAD IDEA.`;
         sound("warning");
         return true;
       }
@@ -3859,10 +3864,19 @@ export function MoonGoonsGame() {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space", "Tab"].includes(event.code)) {
         event.preventDefault();
       }
-      if (event.code === "Tab" && !event.repeat && phaseRef.current === "active") {
+      const keyboardBindings = controlSettingsRef.current.keyboardBindings;
+      if (
+        event.code === keyboardBindings.cycleTool &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         cycleHarvestTool(event.shiftKey ? -1 : 1);
       }
-      if (event.code === "KeyP" && !event.repeat && crewSessionRef.current) {
+      if (
+        event.code === keyboardBindings.crewPing &&
+        !event.repeat &&
+        crewSessionRef.current
+      ) {
         if (crewSessionRef.current.role === "guest") {
           queueCrewAction("ping");
         } else {
@@ -3906,7 +3920,11 @@ export function MoonGoonsGame() {
         }
         sound(quickPing === "ping_danger" ? "warning" : "scan");
       }
-      if (event.code === "KeyT" && !event.repeat && phaseRef.current === "active") {
+      if (
+        event.code === keyboardBindings.tether &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         const session = crewSessionRef.current;
         if (session?.role === "guest") {
           queueCrewAction("tether");
@@ -3919,7 +3937,11 @@ export function MoonGoonsGame() {
           );
         }
       }
-      if (event.code === "KeyH" && !event.repeat && phaseRef.current === "active") {
+      if (
+        event.code === keyboardBindings.cart &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         const session = crewSessionRef.current;
         if (session?.role === "guest") {
           queueCrewAction("cart_toggle");
@@ -3932,7 +3954,11 @@ export function MoonGoonsGame() {
           );
         }
       }
-      if (event.code === "KeyG" && !event.repeat && phaseRef.current === "active") {
+      if (
+        event.code === keyboardBindings.magnet &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         const session = crewSessionRef.current;
         if (magnetCooldownRef.current > 0) {
           messageRef.current = `Magnetic retriever recharging: ${magnetCooldownRef.current.toFixed(1)}s.`;
@@ -3951,13 +3977,21 @@ export function MoonGoonsGame() {
           magnetCooldownRef.current = polarityActionCooldown(astronaut.position);
         }
       }
-      if (event.code === "KeyV" && !event.repeat && phaseRef.current === "active") {
+      if (
+        event.code === keyboardBindings.polarity &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         polarityModeRef.current =
           polarityModeRef.current === "attract" ? "repel" : "attract";
         messageRef.current = `POLARITY MANIPULATOR // ${polarityModeRef.current.toUpperCase()} MODE.`;
         sound("scan");
       }
-      if (event.code === "KeyC" && !event.repeat && phaseRef.current === "active") {
+      if (
+        event.code === keyboardBindings.stabilize &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         const session = crewSessionRef.current;
         if (stabilizerChargesRef.current <= 0) {
           messageRef.current = "Sample stabilizer empty. The foam budget has been respected.";
@@ -3974,7 +4008,11 @@ export function MoonGoonsGame() {
           stabilizerChargesRef.current -= 1;
         }
       }
-      if (event.code === "KeyX" && !event.repeat && phaseRef.current === "active") {
+      if (
+        event.code === keyboardBindings.throwCase &&
+        !event.repeat &&
+        phaseRef.current === "active"
+      ) {
         const session = crewSessionRef.current;
         if (session?.role === "guest") {
           queueCrewAction("tool_throw");
@@ -5113,11 +5151,13 @@ export function MoonGoonsGame() {
         scanCooldownRef.current = Math.max(0, scanCooldownRef.current - dt);
         magnetCooldownRef.current = Math.max(0, magnetCooldownRef.current - dt);
         damageCooldown = Math.max(0, damageCooldown - dt);
-        const jumpPressed = keys.has("Space") || pad.jump;
-        const scanInput = keys.has("KeyQ") || pad.scan;
-        const drillInput = keys.has("KeyF") || pad.drill;
-        const repairInput = keys.has("KeyR") || pad.repair;
-        const interactInput = keys.has("KeyE") || pad.interact || pad.throwCargo;
+        const keyboardBindings = controlSettingsRef.current.keyboardBindings;
+        const jumpPressed = keys.has(keyboardBindings.jump) || pad.jump;
+        const scanInput = keys.has(keyboardBindings.scan) || pad.scan;
+        const drillInput = keys.has(keyboardBindings.useTool) || pad.drill;
+        const repairInput = keys.has(keyboardBindings.repair) || pad.repair;
+        const interactInput =
+          keys.has(keyboardBindings.interact) || pad.interact || pad.throwCargo;
         const throwInput =
           keys.has("ShiftLeft") || keys.has("ShiftRight") || pad.throwCargo;
 
@@ -5388,10 +5428,11 @@ export function MoonGoonsGame() {
             : 1;
         const speedFactor = carriedSpeedFactor * cartSpeedFactor;
         const keyboardDrive =
-          (keys.has("KeyW") || keys.has("ArrowUp") ? 1 : 0) -
-          (keys.has("KeyS") || keys.has("ArrowDown") ? 1 : 0);
+          (keys.has(keyboardBindings.forward) || keys.has("ArrowUp") ? 1 : 0) -
+          (keys.has(keyboardBindings.backward) || keys.has("ArrowDown") ? 1 : 0);
         const keyboardStrafe =
-          (keys.has("KeyD") ? 1 : 0) - (keys.has("KeyA") ? 1 : 0);
+          (keys.has(keyboardBindings.strafeRight) ? 1 : 0) -
+          (keys.has(keyboardBindings.strafeLeft) ? 1 : 0);
         const driveInput = incapacitated ? 0 : keyboardDrive || -pad.moveY;
         const strafeInput = incapacitated ? 0 : keyboardStrafe || pad.moveX;
         const fallbackTurnInput = mouseCapturedRef.current || incapacitated
@@ -6178,8 +6219,9 @@ export function MoonGoonsGame() {
             repairProgressRef.current = 0;
             drillBeam.visible = false;
             drillGlow.intensity = 0;
-            messageRef.current =
-              "DRILL JAMMED. TAP R THREE TIMES FOR APPROVED PERCUSSIVE MAINTENANCE.";
+            messageRef.current = `DRILL JAMMED. TAP ${formatKeyboardCode(
+              keyboardBindings.repair,
+            )} THREE TIMES FOR APPROVED PERCUSSIVE MAINTENANCE.`;
             sound("warning");
           } else if (activeHarvestTool === "drill" && heatRef.current >= 100) {
             heatRef.current = 100;
@@ -6430,7 +6472,7 @@ export function MoonGoonsGame() {
       let networkInputMask = 0;
       const networkHarvestTool = activeHarvestToolRef.current;
       if (
-        (keys.has("KeyF") || pad.drill) &&
+        (keys.has(keyboardBindings.useTool) || pad.drill) &&
         (networkHarvestTool !== "drill" ||
           (!overheatedRef.current && !drillJammedRef.current))
       ) {
@@ -6442,10 +6484,10 @@ export function MoonGoonsGame() {
         networkInputMask |= CREW_INPUT_TOOL_SIPHON;
       }
       if (
-        keys.has("KeyW") ||
-        keys.has("KeyS") ||
-        keys.has("KeyA") ||
-        keys.has("KeyD") ||
+        keys.has(keyboardBindings.forward) ||
+        keys.has(keyboardBindings.backward) ||
+        keys.has(keyboardBindings.strafeLeft) ||
+        keys.has(keyboardBindings.strafeRight) ||
         keys.has("ArrowUp") ||
         keys.has("ArrowDown") ||
         Math.abs(pad.moveX) > 0.08 ||
@@ -6453,7 +6495,11 @@ export function MoonGoonsGame() {
       ) {
         networkInputMask |= CREW_INPUT_MOVING;
       }
-      if ((keys.has("Space") || pad.jump) && playerHeight > 0.38 && thrusterFuel > 0) {
+      if (
+        (keys.has(keyboardBindings.jump) || pad.jump) &&
+        playerHeight > 0.38 &&
+        thrusterFuel > 0
+      ) {
         networkInputMask |= CREW_INPUT_THRUSTER;
       }
       if (downedRef.current) networkInputMask |= CREW_INPUT_DOWNED;
@@ -6755,39 +6801,50 @@ export function MoonGoonsGame() {
             );
           }
         }
+        const tetherKey = formatKeyboardCode(keyboardBindings.tether);
+        const scanKey = formatKeyboardCode(keyboardBindings.scan);
+        const interactKey = formatKeyboardCode(keyboardBindings.interact);
+        const stabilizeKey = formatKeyboardCode(keyboardBindings.stabilize);
+        const magnetKey = formatKeyboardCode(keyboardBindings.magnet);
+        const polarityKey = formatKeyboardCode(keyboardBindings.polarity);
+        const cartKey = formatKeyboardCode(keyboardBindings.cart);
+        const cycleToolKey = formatKeyboardCode(keyboardBindings.cycleTool);
+        const repairKey = formatKeyboardCode(keyboardBindings.repair);
+        const useToolKey = formatKeyboardCode(keyboardBindings.useTool);
+        const jumpKey = formatKeyboardCode(keyboardBindings.jump);
         let prompt = tethered
-          ? `T · RELEASE ${cargoData[tethered.kind].name.toUpperCase()} · ${Math.round(
+          ? `${tetherKey} · RELEASE ${cargoData[tethered.kind].name.toUpperCase()} · ${Math.round(
               tetherDistance ?? 0,
             )}m${tethered.tetherOwnerIds.length >= 2 ? " · TEAM LIFT" : ""}`
-          : "Q · SCAN FOR VALUABLE MATERIAL";
+          : `${scanKey} · SCAN FOR VALUABLE MATERIAL`;
         if (held) {
           prompt =
             railIntakeDistance < 5 && cargoData[held.kind].magnetic
-              ? `E · LOAD MAG-RAIL // ${cargoData[held.kind].name.toUpperCase()} · BAY TRAJECTORY`
+              ? `${interactKey} · LOAD MAG-RAIL // ${cargoData[held.kind].name.toUpperCase()} · BAY TRAJECTORY`
               : receiverDistance < 3.8
-              ? `E · SECURE ${cargoData[held.kind].name.toUpperCase()}`
+              ? `${interactKey} · SECURE ${cargoData[held.kind].name.toUpperCase()}`
               : cartDistance < 4.5 && canLoadCargoCart(cartCargoIds.length)
-                ? `E · LOAD ${cargoData[
+                ? `${interactKey} · LOAD ${cargoData[
                     held.kind
                   ].name.toUpperCase()} // CART ${cartCargoIds.length}/${CART_CAPACITY}`
                 : currentThrowPrediction
-                ? `E DROP · SHIFT+E THROW · ${currentThrowPrediction.risk} @ ${Math.round(
+                ? `${interactKey} DROP · SHIFT+${interactKey} THROW · ${currentThrowPrediction.risk} @ ${Math.round(
                     currentThrowPrediction.horizontalDistance,
                   )}m · BAY ${Math.round(receiverDistance)}m`
-                : `E DROP · SHIFT+E THROW · BAY ${Math.round(receiverDistance)}m`;
+                : `${interactKey} DROP · SHIFT+${interactKey} THROW · BAY ${Math.round(receiverDistance)}m`;
           if (held.condition < 0.995 && stabilizerChargesRef.current > 0) {
-            prompt += ` · C FOAM ${Math.round(held.condition * 100)}%`;
+            prompt += ` · ${stabilizeKey} FOAM ${Math.round(held.condition * 100)}%`;
           }
         } else if (
           nearbyDownedCrew &&
           nearbyDownedCrew.distance <= 3.8
         ) {
-          prompt = `E · CONNECT REBOOT LEAD // ${nearbyDownedCrew.member.name.toUpperCase()} · TEAM RECOVERY`;
+          prompt = `${interactKey} · CONNECT REBOOT LEAD // ${nearbyDownedCrew.member.name.toUpperCase()} · TEAM RECOVERY`;
         } else if (
           nearbyCatchableCargo &&
           nearbyCatchableCargo.distance <= 3.05
         ) {
-          prompt = `E · CATCH ${cargoData[
+          prompt = `${interactKey} · CATCH ${cargoData[
             nearbyCatchableCargo.deposit.kind
           ].name.toUpperCase()} // MID-AIR BONUS`;
         } else if (
@@ -6795,7 +6852,7 @@ export function MoonGoonsGame() {
           nearbyLooseFieldCase.distance <= FIELD_CASE_PICKUP_RANGE &&
           !localSpecialistCase
         ) {
-          prompt = `E · ${
+          prompt = `${interactKey} · ${
             nearbyLooseFieldCase.fieldCase.isBallistic ? "CATCH" : "CLAIM"
           } ${harvestToolData[
             nearbyLooseFieldCase.fieldCase.toolId
@@ -6809,14 +6866,14 @@ export function MoonGoonsGame() {
           cartReceiverDistance < 4.8 &&
           receiverDistance < 5.8
         ) {
-          prompt = `E · DEPOSIT CART // ${cartCargoIds.length} SAMPLE${
+          prompt = `${interactKey} · DEPOSIT CART // ${cartCargoIds.length} SAMPLE${
             cartCargoIds.length === 1 ? "" : "S"
           }`;
         } else if (
           nearbyCargo &&
           nearbyCargo.position.distanceTo(astronaut.position) < 3.2
         ) {
-          prompt = `E · PICK UP ${cargoData[
+          prompt = `${interactKey} · PICK UP ${cargoData[
             nearbyCargo.kind
           ].name.toUpperCase()} · ${cargoData[nearbyCargo.kind].structure}`;
         } else if (
@@ -6828,22 +6885,22 @@ export function MoonGoonsGame() {
         ) {
           const requiredMode = nearbyRelay.relay.userData
             .requirement as MagneticPolarity;
-          prompt = `G · ALIGN RELAY ${Number(nearbyRelay.relay.userData.index) + 1} · REQUIRES ${requiredMode.toUpperCase()} · V FLIPS POLARITY`;
+          prompt = `${magnetKey} · ALIGN RELAY ${Number(nearbyRelay.relay.userData.index) + 1} · REQUIRES ${requiredMode.toUpperCase()} · ${polarityKey} FLIPS POLARITY`;
         } else if (
           magneticCargo &&
           magneticCargo.position.distanceTo(astronaut.position) <= 18 &&
           magnetCooldownRef.current <= 0
         ) {
-          prompt = `G · ${polarityModeRef.current === "attract" ? "MAG-YANK" : "POLARITY-KICK"} ${cargoData[magneticCargo.kind].name.toUpperCase()} · ${Math.round(
+          prompt = `${magnetKey} · ${polarityModeRef.current === "attract" ? "MAG-YANK" : "POLARITY-KICK"} ${cargoData[magneticCargo.kind].name.toUpperCase()} · ${Math.round(
             magneticCargo.position.distanceTo(astronaut.position),
-          )}m · V ${polarityModeRef.current.toUpperCase()}`;
+          )}m · ${polarityKey} ${polarityModeRef.current.toUpperCase()}`;
         } else if (cartDistance < 4.5) {
           prompt =
             cartOwnerId === hudOwnerId
-              ? `H · RELEASE CART // ${cartCargoIds.length}/${CART_CAPACITY}`
+              ? `${cartKey} · RELEASE CART // ${cartCargoIds.length}/${CART_CAPACITY}`
               : cartOwnerId
                 ? `CART IN USE // ${cartCargoIds.length}/${CART_CAPACITY}`
-                : `H · HITCH CART // ${cartCargoIds.length}/${CART_CAPACITY}`;
+                : `${cartKey} · HITCH CART // ${cartCargoIds.length}/${CART_CAPACITY}`;
         } else if (
           nearbySignal &&
           nearbySignal.position.distanceTo(astronaut.position) < 3
@@ -6852,14 +6909,14 @@ export function MoonGoonsGame() {
           const selectedTool = activeHarvestToolRef.current;
           prompt =
             selectedTool !== requiredTool
-              ? `TAB / WHEEL · SELECT ${harvestToolData[
+              ? `${cycleToolKey} / WHEEL · SELECT ${harvestToolData[
                   requiredTool
                 ].name.toUpperCase()} FOR ${cargoData[nearbySignal.kind].name.toUpperCase()}`
               : selectedTool === "drill" && overheatedRef.current
                 ? "DRILL COOLING · SWITCH TOOLS OR WAIT"
                 : selectedTool === "drill" && drillJammedRef.current
-                  ? "TAP R · REPAIR JAMMED THERMAL DRILL"
-                  : `HOLD F · ${harvestToolData[
+                  ? `TAP ${repairKey} · REPAIR JAMMED THERMAL DRILL`
+                  : `HOLD ${useToolKey} · ${harvestToolData[
                       selectedTool
                     ].verb} ${cargoData[
                       nearbySignal.kind
@@ -6868,13 +6925,13 @@ export function MoonGoonsGame() {
           scoreRef.current >= CONTRACTS[activeContractIdRef.current].target &&
           homeDistance < 7.2
         ) {
-          prompt = "E · LAUNCH WITH CONTRACT SECURED";
+          prompt = `${interactKey} · LAUNCH WITH CONTRACT SECURED`;
         } else if (nearbySignal) {
           prompt = `SIGNAL AHEAD · ${Math.round(
             nearbySignal.position.distanceTo(astronaut.position),
           )}m`;
         } else if (playerHeight > 0.4 && thrusterFuel > 0) {
-          prompt = `HOLD SPACE · EVA THRUSTER · ${Math.round(thrusterFuel)}%`;
+          prompt = `HOLD ${jumpKey} · EVA THRUSTER · ${Math.round(thrusterFuel)}%`;
         }
         if (
           drillJammedRef.current &&
@@ -6883,7 +6940,7 @@ export function MoonGoonsGame() {
           const repairHitsRemaining = Math.ceil(
             (100 - repairProgressRef.current) / 34,
           );
-          prompt = `TAP R · PERCUSSIVE REPAIR · ${repairHitsRemaining} HIT${
+          prompt = `TAP ${repairKey} · PERCUSSIVE REPAIR · ${repairHitsRemaining} HIT${
             repairHitsRemaining === 1 ? "" : "S"
           }`;
         }
@@ -6930,7 +6987,7 @@ export function MoonGoonsGame() {
           }
         }
         if (downedRef.current) {
-          prompt = `HOLD E · EMERGENCY SUIT REBOOT · ${Math.round(
+          prompt = `HOLD ${interactKey} · EMERGENCY SUIT REBOOT · ${Math.round(
             recoveryProgressRef.current,
           )}%`;
         }
@@ -7241,7 +7298,9 @@ export function MoonGoonsGame() {
       cartHitched: false,
       cartDistance: 10,
       depositsSecured: 0,
-      prompt: "Q · SCAN FOR VALUABLE MATERIAL",
+      prompt: `${formatKeyboardCode(
+        controlSettingsRef.current.keyboardBindings.scan,
+      )} · SCAN FOR VALUABLE MATERIAL`,
       homeDistance: 7,
       thrusterFuel: thrusterCapacity,
       signalsTracked: 0,
@@ -7283,6 +7342,7 @@ export function MoonGoonsGame() {
     carrying: snapshot.carrying,
     signalsTracked: snapshot.signalsTracked,
     nearestSignalDistance: snapshot.nearestSignalDistance,
+    interactKey: formatKeyboardCode(controlSettings.keyboardBindings.interact),
   });
   const selectedHarvestTool = harvestToolData[snapshot.activeHarvestTool];
   const harvestMeterLabel =
@@ -7316,6 +7376,7 @@ export function MoonGoonsGame() {
           research={progression.research}
           lastRepairBill={lastSettlement?.repairCreditsCharged ?? 0}
           renderQuality={controlSettings.renderQuality}
+          keyboardBindings={controlSettings.keyboardBindings}
           interactive={!hubTerminalOpen && !notesOpen && !settingsOpen}
           onOpenStation={openHubStation}
         />
@@ -7326,7 +7387,7 @@ export function MoonGoonsGame() {
           <span className={styles.brandMark}>MG</span>
           <div>
             <p>MOON GOONS</p>
-            <span>S.P.A.C.E. FIELD TEST // BUILD 034 // MISSION PRESSURE</span>
+            <span>S.P.A.C.E. FIELD TEST // BUILD 035 // CONTROL CALIBRATION</span>
           </div>
         </div>
         <div className={`${styles.clock} ${urgent ? styles.urgent : ""}`}>
@@ -7531,7 +7592,9 @@ export function MoonGoonsGame() {
               />
             </div>
             <div className={`${styles.utilityToolStatus} ${styles.secondaryTelemetry}`}>
-              <span>FIELD KIT TAB / WHEEL</span>
+              <span>
+                FIELD KIT {formatKeyboardCode(controlSettings.keyboardBindings.cycleTool)} / WHEEL
+              </span>
               <strong>DRILL · CORER · SIPHON</strong>
             </div>
             <div
@@ -7688,7 +7751,9 @@ export function MoonGoonsGame() {
           >
             <span className={styles.controlsLabel}>FIELD CONTROLS</span>
             <div>
-              <kbd>WASD</kbd>
+              <kbd>
+                {formatKeyboardCode(controlSettings.keyboardBindings.forward)} / {formatKeyboardCode(controlSettings.keyboardBindings.backward)} / {formatKeyboardCode(controlSettings.keyboardBindings.strafeLeft)} / {formatKeyboardCode(controlSettings.keyboardBindings.strafeRight)}
+              </kbd>
               <span>MOVE</span>
             </div>
             <div>
@@ -7696,31 +7761,31 @@ export function MoonGoonsGame() {
               <span>LOOK / TURN</span>
             </div>
             <div>
-              <kbd>SPACE</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.jump)}</kbd>
               <span>HOP / HOLD BOOST</span>
             </div>
             <div>
-              <kbd>F</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.useTool)}</kbd>
               <span>USE TOOL</span>
             </div>
             <div>
-              <kbd>TAB / WHEEL</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.cycleTool)} / WHEEL</kbd>
               <span>CYCLE KIT</span>
             </div>
             <div>
-              <kbd>E / ⇧E</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.interact)} / ⇧{formatKeyboardCode(controlSettings.keyboardBindings.interact)}</kbd>
               <span>USE / THROW</span>
             </div>
             <div>
-              <kbd>Q</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.scan)}</kbd>
               <span>SCAN</span>
             </div>
             <div className={styles.advancedControl}>
-              <kbd>G / V</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.magnet)} / {formatKeyboardCode(controlSettings.keyboardBindings.polarity)}</kbd>
               <span>POLARITY / FLIP</span>
             </div>
             <div className={styles.advancedControl}>
-              <kbd>X</kbd>
+              <kbd>{formatKeyboardCode(controlSettings.keyboardBindings.throwCase)}</kbd>
               <span>TOSS SPECIALIST CASE</span>
             </div>
           </div>
@@ -7749,7 +7814,7 @@ export function MoonGoonsGame() {
           {snapshot.score >= snapshot.contractTarget && (
             <div className={styles.launchButton}>
               {snapshot.homeDistance <= 7.2
-                ? "PRESS E TO LAUNCH // CONTRACT SECURED"
+                ? `PRESS ${formatKeyboardCode(controlSettings.keyboardBindings.interact)} TO LAUNCH // CONTRACT SECURED`
                 : `RETURN TO LANDER // ${Math.round(snapshot.homeDistance)}m`}
             </div>
           )}

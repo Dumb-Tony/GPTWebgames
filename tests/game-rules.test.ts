@@ -4,6 +4,7 @@ import {
   CONTRACT_TARGET,
   CART_CAPACITY,
   DEFAULT_CONTROL_SETTINGS,
+  DEFAULT_KEYBOARD_BINDINGS,
   TETHER_BREAK_RANGE,
   advanceSuitRecovery,
   alignRustRelay,
@@ -23,6 +24,7 @@ import {
   calculateTetherPull,
   createMissionDepositDefinitions,
   fieldCaseHarvestMultiplier,
+  formatKeyboardCode,
   formatSignalBearing,
   formatTime,
   missionMaximumValue,
@@ -30,7 +32,9 @@ import {
   nextHarvestTool,
   nextMissionSeed,
   normalizeControlSettings,
+  normalizeKeyboardBindings,
   predictCargoThrow,
+  rebindKeyboardAction,
   registerRepairStrike,
   requiredHarvestTool,
   renderPixelRatioCap,
@@ -451,6 +455,30 @@ test("control preferences reject invalid values and clamp extreme tuning", () =>
   assert.equal(renderPixelRatioCap("balanced"), 1.5);
   assert.equal(renderPixelRatioCap("high"), 2);
   assert.equal(normalizeControlSettings({ hudDensity: "full" }).hudDensity, "full");
+});
+
+test("keyboard remapping is persistent, readable, and conflict safe", () => {
+  assert.deepEqual(normalizeKeyboardBindings(null), DEFAULT_KEYBOARD_BINDINGS);
+
+  const alternateMovement = normalizeKeyboardBindings({
+    forward: "KeyI",
+    backward: "KeyK",
+    strafeLeft: "KeyJ",
+    strafeRight: "KeyL",
+  });
+  assert.equal(alternateMovement.forward, "KeyI");
+  assert.equal(alternateMovement.backward, "KeyK");
+  assert.equal(alternateMovement.scan, "KeyQ");
+
+  const swapped = rebindKeyboardAction(DEFAULT_KEYBOARD_BINDINGS, "forward", "KeyS");
+  assert.equal(swapped.forward, "KeyS");
+  assert.equal(swapped.backward, "KeyW");
+  assert.equal(new Set(Object.values(swapped)).size, Object.values(swapped).length);
+
+  const rejected = rebindKeyboardAction(swapped, "jump", "Digit7");
+  assert.deepEqual(rejected, swapped);
+  assert.equal(formatKeyboardCode("Space"), "SPACE");
+  assert.equal(formatKeyboardCode("KeyV"), "V");
 });
 
 test("standard controllers apply deadzones and expose the complete field control set", () => {

@@ -15,6 +15,67 @@ export const CART_CAPACITY = 4;
 export const FIELD_CASE_PICKUP_RANGE = 3.2;
 export const FIELD_CASE_SPECIALIST_MULTIPLIER = 1.3;
 
+export type KeyboardAction =
+  | "forward"
+  | "backward"
+  | "strafeLeft"
+  | "strafeRight"
+  | "jump"
+  | "scan"
+  | "useTool"
+  | "interact"
+  | "repair"
+  | "cycleTool"
+  | "crewPing"
+  | "tether"
+  | "cart"
+  | "magnet"
+  | "polarity"
+  | "stabilize"
+  | "throwCase";
+
+export type KeyboardBindings = Record<KeyboardAction, string>;
+
+export const KEYBOARD_ACTION_ORDER: readonly KeyboardAction[] = [
+  "forward",
+  "backward",
+  "strafeLeft",
+  "strafeRight",
+  "jump",
+  "scan",
+  "useTool",
+  "interact",
+  "repair",
+  "cycleTool",
+  "crewPing",
+  "tether",
+  "cart",
+  "magnet",
+  "polarity",
+  "stabilize",
+  "throwCase",
+];
+
+export const DEFAULT_KEYBOARD_BINDINGS: KeyboardBindings = {
+  forward: "KeyW",
+  backward: "KeyS",
+  strafeLeft: "KeyA",
+  strafeRight: "KeyD",
+  jump: "Space",
+  scan: "KeyQ",
+  useTool: "KeyF",
+  interact: "KeyE",
+  repair: "KeyR",
+  cycleTool: "Tab",
+  crewPing: "KeyP",
+  tether: "KeyT",
+  cart: "KeyH",
+  magnet: "KeyG",
+  polarity: "KeyV",
+  stabilize: "KeyC",
+  throwCase: "KeyX",
+};
+
 export type ControlSettings = {
   lookSensitivity: number;
   invertY: boolean;
@@ -25,6 +86,7 @@ export type ControlSettings = {
   hudDensity: "compact" | "full";
   renderQuality: "low" | "balanced" | "high";
   missionGuide: boolean;
+  keyboardBindings: KeyboardBindings;
 };
 
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
@@ -37,6 +99,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   hudDensity: "compact",
   renderQuality: "balanced",
   missionGuide: true,
+  keyboardBindings: DEFAULT_KEYBOARD_BINDINGS,
 };
 
 export type CargoKind =
@@ -368,6 +431,7 @@ export type MissionDirectiveInput = {
   carrying: string | null;
   signalsTracked: number;
   nearestSignalDistance: number | null;
+  interactKey?: string;
 };
 
 export function missionPressureStage(
@@ -394,6 +458,7 @@ export function createMissionDirective({
   carrying,
   signalsTracked,
   nearestSignalDistance,
+  interactKey,
 }: MissionDirectiveInput): MissionDirective {
   const safeScore = Math.max(0, Math.round(Number.isFinite(score) ? score : 0));
   const safeTarget = Math.max(0, Math.round(Number.isFinite(target) ? target : 0));
@@ -407,13 +472,17 @@ export function createMissionDirective({
   const aboard = safeHomeDistance <= 7;
   const stage = missionPressureStage(safeTime, hazardWindow);
   const clock = formatTime(safeTime);
+  const safeInteractKey =
+    typeof interactKey === "string" && interactKey.trim()
+      ? interactKey.trim().toUpperCase()
+      : "E";
 
   if (stage === "critical") {
     if (secured && aboard) {
       return {
         stage,
         label: "LAUNCH AUTHORITY // IMMEDIATE",
-        headline: `PRESS E TO LAUNCH // ${clock}`,
+        headline: `PRESS ${safeInteractKey} TO LAUNCH // ${clock}`,
         detail: "CONTRACT SECURED · CREW EXPENDABLE",
       };
     }
@@ -440,7 +509,7 @@ export function createMissionDirective({
       ? {
           stage,
           label: "CONTRACT SECURED // LAUNCH READY",
-          headline: "PRESS E TO RETURN TO ORBIT",
+          headline: `PRESS ${safeInteractKey} TO RETURN TO ORBIT`,
           detail: "ALL CARGO REMAINING OUTSIDE IS A PERSONAL DECISION",
         }
       : {
@@ -708,6 +777,68 @@ export function canAirmailCargo(
   );
 }
 
+export function isRemappableKeyboardCode(code: unknown): code is string {
+  return (
+    typeof code === "string" &&
+    (code === "Space" || code === "Tab" || /^Key[A-Z]$/.test(code))
+  );
+}
+
+export function formatKeyboardCode(code: string) {
+  if (code === "Space") return "SPACE";
+  if (code === "Tab") return "TAB";
+  const letter = /^Key([A-Z])$/.exec(code)?.[1];
+  return letter ?? code.toUpperCase();
+}
+
+export function rebindKeyboardAction(
+  bindings: Partial<KeyboardBindings> | null | undefined,
+  action: KeyboardAction,
+  code: unknown,
+): KeyboardBindings {
+  const normalized = normalizeKeyboardBindings(bindings);
+  if (!isRemappableKeyboardCode(code)) return normalized;
+  const previousCode = normalized[action];
+  if (previousCode === code) return normalized;
+  const displacedAction = KEYBOARD_ACTION_ORDER.find(
+    (candidate) => normalized[candidate] === code,
+  );
+  const next = { ...normalized, [action]: code };
+  if (displacedAction) next[displacedAction] = previousCode;
+  return next;
+}
+
+export function normalizeKeyboardBindings(
+  bindings: Partial<KeyboardBindings> | null | undefined,
+): KeyboardBindings {
+  return KEYBOARD_ACTION_ORDER.reduce<KeyboardBindings>(
+    (normalized, action) =>
+      rebindKeyboardActionWithoutNormalization(
+        normalized,
+        action,
+        bindings?.[action],
+      ),
+    { ...DEFAULT_KEYBOARD_BINDINGS },
+  );
+}
+
+function rebindKeyboardActionWithoutNormalization(
+  bindings: KeyboardBindings,
+  action: KeyboardAction,
+  code: unknown,
+) {
+  if (!isRemappableKeyboardCode(code) || bindings[action] === code) {
+    return bindings;
+  }
+  const previousCode = bindings[action];
+  const displacedAction = KEYBOARD_ACTION_ORDER.find(
+    (candidate) => bindings[candidate] === code,
+  );
+  const next = { ...bindings, [action]: code };
+  if (displacedAction) next[displacedAction] = previousCode;
+  return next;
+}
+
 export function normalizeControlSettings(
   settings: Partial<ControlSettings> | null | undefined,
 ): ControlSettings {
@@ -750,6 +881,7 @@ export function normalizeControlSettings(
       typeof settings?.missionGuide === "boolean"
         ? settings.missionGuide
         : DEFAULT_CONTROL_SETTINGS.missionGuide,
+    keyboardBindings: normalizeKeyboardBindings(settings?.keyboardBindings),
   };
 }
 

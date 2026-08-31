@@ -1343,6 +1343,9 @@
 .rangeSetting,
 .checkSetting,
 .selectSetting,
+.bindingIntro,
+.bindingButton,
+.bindingNotice,
 .settingsFooter {
   font-family: monospace;
 }
@@ -1427,6 +1430,78 @@
 
 .settingsGroup > label:last-child {
   border-bottom: 0;
+}
+
+.bindingIntro {
+  margin: 0;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 8px;
+  line-height: 1.45;
+}
+
+.bindingGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  background: var(--line);
+}
+
+.bindingButton {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 0;
+  background: #111727;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+
+.bindingButton:hover,
+.bindingButton:focus-visible,
+.bindingButton[data-listening="true"] {
+  outline: none;
+  background: rgba(255, 134, 94, 0.14);
+  box-shadow: inset 3px 0 var(--orange);
+}
+
+.bindingButton span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 7px;
+  letter-spacing: 0.05em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bindingButton kbd {
+  min-width: 34px;
+  padding: 3px 5px;
+  border: 1px solid rgba(110, 231, 228, 0.34);
+  background: rgba(110, 231, 228, 0.08);
+  color: var(--cyan);
+  font-size: 8px;
+  text-align: center;
+}
+
+.bindingButton[data-listening="true"] kbd {
+  border-color: var(--orange);
+  color: var(--yellow);
+}
+
+.bindingNotice {
+  min-height: 27px;
+  padding: 8px 11px;
+  border-top: 1px solid var(--line);
+  color: var(--green);
+  font-size: 7px;
+  letter-spacing: 0.06em;
+  line-height: 1.4;
 }
 
 .rangeSetting,

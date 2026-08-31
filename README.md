@@ -2,7 +2,7 @@
 
 Bad science. Worse equipment. One last trip to the ship.
 
-Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 034: Mission Pressure, a pacing and field-readability pass layered onto the Catch + Clarity, Specialist Handoff, Crew Signals, Rust Belt Polarity Annex, and retro-NASA field tests introduced in Builds 021–033.
+Moon Goons is a browser-first cooperative space extraction game. This repository currently contains Build 035: Control Calibration, a persistent input-accessibility pass layered onto Mission Pressure, Catch + Clarity, Specialist Handoff, Crew Signals, Rust Belt Polarity Annex, and the retro-NASA field tests introduced in Builds 021–034.
 
 ## Playable build
 
@@ -163,7 +163,7 @@ pnpm run build
 
 ## Current milestone
 
-Build 034 turns the mission clock into a readable escalating director. A centered field order continuously identifies the crew's next best action, remaining quota, lander distance, carried sample, and launch state without replacing contextual tool prompts. Hazard, return, and critical windows now have distinct instrument treatments, one-minute and ten-second audio cues, a final countdown, and stronger automatic-departure feedback. Build 033's compact HUD, catches, specialist handoffs, and multiplayer synchronization remain intact. Remaining cooperation work includes longer four-player soak testing; Milestone 9 still requires remappable action bindings and broader accessibility auditing.
+Build 035 adds a complete persistent keyboard map to Control Tuning. All primary movement, extraction, repair, cargo, crew, tether, cart, and Rust Belt polarity actions can be rebound to letters, Space, or Tab; occupied keys swap instead of creating hidden conflicts, invalid keys are rejected, and old settings migrate safely. The orbital hub, mission controls, contextual action prompts, repair instructions, cargo throw labels, and launch director all display the player's current bindings. Build 034's escalating mission director remains intact. Remaining cooperation work includes longer four-player soak testing and a broader accessibility audit across color-vision modes, subtitles, and controller remapping.
 
 ## Design references
 

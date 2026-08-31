@@ -1,10 +1,39 @@
 "use client";
 
 import {
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import {
   DEFAULT_CONTROL_SETTINGS,
+  KEYBOARD_ACTION_ORDER,
+  formatKeyboardCode,
+  isRemappableKeyboardCode,
+  rebindKeyboardAction,
   type ControlSettings,
+  type KeyboardAction,
 } from "./gameRules";
 import styles from "./game.module.css";
+
+const KEYBOARD_ACTION_LABELS: Record<KeyboardAction, string> = {
+  forward: "MOVE FORWARD",
+  backward: "MOVE BACKWARD",
+  strafeLeft: "STRAFE LEFT",
+  strafeRight: "STRAFE RIGHT",
+  jump: "HOP / BOOST",
+  scan: "PULSE SCANNER",
+  useTool: "USE FIELD TOOL",
+  interact: "USE / CARGO",
+  repair: "PERCUSSIVE REPAIR",
+  cycleTool: "CYCLE TOOL",
+  crewPing: "CREW PING",
+  tether: "TETHER",
+  cart: "CARGO CART",
+  magnet: "MAGNETIC RETRIEVER",
+  polarity: "FLIP POLARITY",
+  stabilize: "STABILIZE SAMPLE",
+  throwCase: "TOSS SPECIALIST CASE",
+};
 
 type ControlSettingsPanelProps = {
   open: boolean;
@@ -19,8 +48,49 @@ export function ControlSettingsPanel({
   onOpenChange,
   onSettingsChange,
 }: ControlSettingsPanelProps) {
+  const [listeningAction, setListeningAction] = useState<KeyboardAction | null>(null);
+  const [bindingNotice, setBindingNotice] = useState("");
   const update = (patch: Partial<ControlSettings>) => {
     onSettingsChange({ ...settings, ...patch });
+  };
+  const changeOpen = (nextOpen: boolean) => {
+    setListeningAction(null);
+    setBindingNotice("");
+    onOpenChange(nextOpen);
+  };
+
+  const captureBinding = (
+    event: ReactKeyboardEvent<HTMLButtonElement>,
+    action: KeyboardAction,
+  ) => {
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === "Escape") {
+      setListeningAction(null);
+      setBindingNotice("CALIBRATION CANCELLED");
+      return;
+    }
+    if (!isRemappableKeyboardCode(event.code)) {
+      setBindingNotice("USE A LETTER, SPACE, OR TAB");
+      return;
+    }
+    const displacedAction = KEYBOARD_ACTION_ORDER.find(
+      (candidate) =>
+        candidate !== action && settings.keyboardBindings[candidate] === event.code,
+    );
+    update({
+      keyboardBindings: rebindKeyboardAction(
+        settings.keyboardBindings,
+        action,
+        event.code,
+      ),
+    });
+    setListeningAction(null);
+    setBindingNotice(
+      displacedAction
+        ? `${KEYBOARD_ACTION_LABELS[action]} SWAPPED WITH ${KEYBOARD_ACTION_LABELS[displacedAction]}`
+        : `${KEYBOARD_ACTION_LABELS[action]} BOUND TO ${formatKeyboardCode(event.code)}`,
+    );
   };
 
   return (
@@ -30,7 +100,7 @@ export function ControlSettingsPanel({
         className={styles.settingsToggle}
         aria-expanded={open}
         aria-controls="control-settings-panel"
-        onClick={() => onOpenChange(!open)}
+        onClick={() => changeOpen(!open)}
       >
         <span>CT</span>
         CONTROL TUNING
@@ -53,7 +123,7 @@ export function ControlSettingsPanel({
             <button
               type="button"
               aria-label="Close control tuning"
-              onClick={() => onOpenChange(false)}
+              onClick={() => changeOpen(false)}
             >
               ×
             </button>
@@ -215,6 +285,45 @@ export function ControlSettingsPanel({
               />
             </label>
             </section>
+
+            <section className={styles.settingsGroup}>
+              <header className={styles.settingsGroupTitle}>
+                <span>03</span>
+                <strong>KEYBOARD MAP</strong>
+              </header>
+              <p className={styles.bindingIntro}>
+                Select an action, then press a letter, Space, or Tab. Occupied keys swap
+                assignments automatically; Escape cancels.
+              </p>
+              <div className={styles.bindingGrid}>
+                {KEYBOARD_ACTION_ORDER.map((action) => (
+                  <button
+                    key={action}
+                    type="button"
+                    className={styles.bindingButton}
+                    data-listening={listeningAction === action || undefined}
+                    aria-pressed={listeningAction === action}
+                    onClick={() => {
+                      setListeningAction(action);
+                      setBindingNotice(`LISTENING FOR ${KEYBOARD_ACTION_LABELS[action]}`);
+                    }}
+                    onKeyDown={(event) => {
+                      if (listeningAction === action) captureBinding(event, action);
+                    }}
+                  >
+                    <span>{KEYBOARD_ACTION_LABELS[action]}</span>
+                    <kbd>
+                      {listeningAction === action
+                        ? "PRESS KEY"
+                        : formatKeyboardCode(settings.keyboardBindings[action])}
+                    </kbd>
+                  </button>
+                ))}
+              </div>
+              <output className={styles.bindingNotice} aria-live="polite">
+                {bindingNotice || "ALL ASSIGNMENTS UNIQUE // STORED ON THIS DEVICE"}
+              </output>
+            </section>
           </div>
 
           <footer className={styles.settingsFooter}>
@@ -224,7 +333,7 @@ export function ControlSettingsPanel({
             >
               RESET DEFAULTS
             </button>
-            <button type="button" onClick={() => onOpenChange(false)}>
+            <button type="button" onClick={() => changeOpen(false)}>
               RETURN TO MISSION
             </button>
           </footer>
